@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<launch>
+	<include file="$(find platonics_vision)/launch/depth_camera.launch" />
+  <node name="global_registartion_service" pkg="platonics_vision" type="global_registration_service" output="screen">
+  </node>
+</launch>

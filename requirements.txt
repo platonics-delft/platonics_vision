@@ -1,0 +1,4 @@
+# Incomplete list of dependencies, WIP
+numpy==1.24.3
+open3d==0.15.2
+optuna==3.6.1
