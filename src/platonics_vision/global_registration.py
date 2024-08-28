@@ -201,10 +201,17 @@ class GlobalRegistration():
         return rotational_error, translational_error
 
     def colored_registration(self):
+        rospy.loginfo("Starting colored registration")
+        rospy.loginfo("Source file: " + self._source_file)
         t0 = perf_counter()
-        gttm_source = self.extract_ground_truth_from_file_name(self._source_file)
-        gttm_target = self.extract_ground_truth_from_file_name(self._target_file)
-        self._logger.debug(gttm_target)
+        has_ground_truth = True
+        try:
+            gttm_source = self.extract_ground_truth_from_file_name(self._source_file)
+            gttm_target = self.extract_ground_truth_from_file_name(self._target_file)
+            self._logger.debug(gttm_target)
+        except Exception as e:
+            self._logger.warning(f"Error in extracting ground truth: {e}")
+            has_ground_truth = False
         source, target, source_down, target_down, source_fpfh, target_fpfh = self.prepare_dataset()
         rospy.loginfo("Number of points in source: " + str(len(source.points)))
         rospy.loginfo("Number of points in target: " + str(len(target.points)))
@@ -212,11 +219,12 @@ class GlobalRegistration():
                                                     source_fpfh, target_fpfh)
 
         final_result = result_ransac
-        error_ransac = self.error(gttm_target, final_result.transformation)
-        error = error_ransac
         self._transformation = final_result.transformation
         self._logger.info(f"Result Global {final_result.transformation}")
-        self._logger.warning(f"Error Global : {error_ransac}")
+        if has_ground_truth:
+            error_ransac = self.error(gttm_target, final_result.transformation)
+            error = error_ransac
+            self._logger.warning(f"Error Global : {error_ransac}")
         if self._logger.level == logging.DEBUG:
             self.draw_registration_result(result_ransac.transformation)
         if self._using_icp:
@@ -226,19 +234,24 @@ class GlobalRegistration():
                 self._logger.error(f"Error in ICP: {e}")
                 result_icp = result_ransac
             final_result = result_icp
-            error_icp = self.error(gttm_target, result_icp.transformation)
+            if has_ground_truth:
+                error_icp = self.error(gttm_target, result_icp.transformation)
             self._logger.info(f"Result ICP {result_icp.transformation}")
             self._logger.warning(f"Error ICP : {error_icp}")
-            if error_icp[1] < error_ransac[1]:
-                self._logger.info("ICP is better than Global")
-                self._transformation = final_result.transformation
-                error = error_icp
+            if has_ground_truth:
+                if error_icp[1] < error_ransac[1]:
+                    self._logger.info("ICP is better than Global")
+                    self._transformation = final_result.transformation
+                    error = error_icp
             else:
                 self._logger.warning("Global is better than ICP")
         if self._logger.level == logging.DEBUG:
             self.draw_registration_result(self.transformation)
 
-        return error[0], error[1], perf_counter() - t0
+        if has_ground_truth:
+            return error[0], error[1], perf_counter() - t0
+        else:
+            return -1, -1, perf_counter() - t0
 
 
     @property

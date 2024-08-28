@@ -1,4 +1,6 @@
 std_msgs/Int32 steps
+std_msgs/Bool save_pcls
 ---
 geometry_msgs/Pose pose
 std_msgs/Float32 compute_time
+std_msgs/Bool success

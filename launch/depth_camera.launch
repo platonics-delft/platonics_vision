@@ -1,5 +1,6 @@
 <?xml version="1.0" ?>
 <launch>
+  <arg name="rviz" default="true"/>
   <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
     <arg name="enable_pointcloud" value="true"/>
     <!--arg name="align_depth" value="true"/>
@@ -17,5 +18,8 @@
     <arg name="json_file_path" value="${find platonics_vision}/config/settings_high_density.json"/>
   </include>
   <node pkg="tf" type="static_transform_publisher" name="camera_tf_publisher" args="0.05521033 -0.01464011 0.06483151 0.707 0 0.707 0 panda_hand camera_link 100" output="screen"/>
+  <group if="$(arg rviz)">
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find platonics_vision)/config/camera.rviz" required="true" output="screen"/>
+  </group>
 </launch>
 

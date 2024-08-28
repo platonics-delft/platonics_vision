@@ -85,7 +85,8 @@ class IterativeRegistrationService():
             rospy.loginfo("Calling global registration service")
             # Call global registration service
             global_registration_request = GlobalRegistrationLocalizerRequest()
-            global_registration_request.file_name.data = '0_0_111'
+            if request.save_pcls.data:
+                global_registration_request.file_name.data = f'target_pcl_{i}'
             height = self._cartesian_pose.position.z
             # round height to 150,250,350 mm
             height = closest_value(height*1000, [150, 250, 350])
@@ -93,6 +94,10 @@ class IterativeRegistrationService():
             rospy.loginfo(f"Template name: {template_name}")
             global_registration_request.template_file_name.data = template_name
             global_registration_response: GlobalRegistrationLocalizerResponse = self._global_registration_service(global_registration_request)
+            if not global_registration_response.success.data:
+                rospy.logerr("Global registration failed")
+                response.success.data = False
+                return response
             rospy.loginfo(global_registration_response.pose)
             rospy.loginfo(f"Global registration service called in {global_registration_response.compute_time.data} seconds")
             tf_matrix = pose_2_transformation(global_registration_response.pose)
@@ -101,6 +106,7 @@ class IterativeRegistrationService():
         final_pose = transformation_2_pose(goal_matrix)
         final_pose.pose.position.z = self._final_height
         self.bring_robot_to_pose(final_pose)
+        response.success.data = True
         return response
 
     def run(self):

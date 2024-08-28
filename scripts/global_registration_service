@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import rospy
+import rospkg
+import os
 import open3d as o3d
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
@@ -15,7 +17,6 @@ from platonics_vision.global_registration import GlobalRegistration
 from platonics_vision.srv import SavingPointcloud, SavingPointcloudResponse
 from platonics_vision.srv import GlobalRegistrationLocalizer, GlobalRegistrationLocalizerResponse
 
-SOURCE_FILE = "../data/0_0_0_150.ply"
 
 best_params = {'voxel_size': 0.0030744504851761625, 'normal_radius': 0.007285624380253406, 'search_radius': 0.0010634785735368485, 'distance_threshold': 0.2290717382246619, 'max_nn_normal': 64, 'max_nn_fpfh': 84}
 
@@ -37,14 +38,17 @@ def float32_array_to_rgb(float_array):
 
 
 class GlobalRegistrationService():
-    _filtered_pcd: o3d.geometry.PointCloud
+    _filtered_pcd: o3d.geometry.PointCloud = None
     _filter_height: float = 0.075
     _cartesian_pose: Pose = Pose()
+    _templates_folder: str
 
     def __init__(self):
         rospy.init_node("global_registration_service")
         self._rate = rospy.Rate(10)
-        self._global_registration = GlobalRegistration(SOURCE_FILE, "")
+        self._global_registration = GlobalRegistration("", "")
+        rospack = rospkg.RosPack()
+        self._templates_folder = rospack.get_path("platonics_vision") + "/data/"
         """
         self._global_registration.voxel_size = best_params['voxel_size']
         self._global_registration.normal_radius = best_params['normal_radius']
@@ -153,7 +157,7 @@ class GlobalRegistrationService():
         rospy.loginfo("Saving point cloud")
         height = self._cartesian_pose.position.z
         rospy.loginfo(f"Height : {height}")
-        file_name = request.location_string.data + "_" + str(round(height*1000)) + ".ply"
+        file_name = self._templates_folder + request.location_string.data + "_" + str(round(height*1000)) + ".ply"
         rospy.loginfo("File name : " + file_name)
         o3d.io.write_point_cloud(file_name, self._filtered_pcd)
         response = SavingPointcloudResponse()
@@ -162,15 +166,28 @@ class GlobalRegistrationService():
 
 
     def handle_registration_request(self, request: GlobalRegistrationLocalizer):
-        self._global_registration.source_file = request.template_file_name.data
-        if request.file_name.data != "":
+        if self._filtered_pcd is None:
+            rospy.logerr("No point cloud received")
+            response = GlobalRegistrationLocalizerResponse()
+            response.success.data = False
+            return response
+        template_file_name = self._templates_folder + request.template_file_name.data
+        if not os.path.isfile(template_file_name):
+            rospy.logerr(f"File {template_file_name} does not exist")
+            response = GlobalRegistrationLocalizerResponse()
+            response.success.data = False
+            return response
+        self._global_registration.source_file = template_file_name
+
+        while len(self._filtered_pcd.points) < 5000 or len(self._filtered_pcd.points) > 20000:
+            rospy.logwarn("Not enough or too many points in point cloud")
+            rospy.sleep(0.2)
+        file_name = request.file_name.data
+        if file_name != "":
             height = self._cartesian_pose.position.z
             rospy.loginfo(f"Height : {height}")
-            file_name = request.file_name.data + "_" + str(round(height*1000)) + ".ply"
+            file_name = self._templates_folder + file_name + "_" + str(round(height*1000)) + ".ply"
             o3d.io.write_point_cloud(file_name, self._filtered_pcd)
-        while len(self._filtered_pcd.points) < 5000:
-            rospy.logwarn("Not enough points in point cloud")
-            rospy.sleep(0.2)
         rospy.loginfo("Pointcloud with {} points".format(len(self._filtered_pcd.points)))
         self._global_registration.target_pcl = copy.deepcopy(self._filtered_pcd)
         t0 = perf_counter()
@@ -193,6 +210,7 @@ class GlobalRegistrationService():
         response.pose.orientation.x = quaternion[0]
         response.pose.orientation.y = quaternion[1]
         response.pose.orientation.z = quaternion[2]
+        response.success.data = True
         return response
 
     def run(self):
