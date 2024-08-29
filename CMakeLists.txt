@@ -60,8 +60,10 @@ add_service_files(
   FILES
   ComputeLocalization.srv
   GlobalRegistrationLocalizer.srv
+  SiftRegistrationLocalizer.srv
   IterativeRegistrationLocalizer.srv
   SavingPointcloud.srv
+  SavingTemplate.srv
 )
 
 ## Generate actions in the 'action' folder

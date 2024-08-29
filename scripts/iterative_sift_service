@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+
+from panda_ros.pose_transform_functions import list_2_quaternion, array_quat_2_pose
+from platonics_vision.srv import IterativeRegistrationLocalizer, IterativeRegistrationLocalizerResponse, IterativeRegistrationLocalizerRequest, SavingPointcloudRequest
+from sensor_msgs.msg import Image
+from panda_ros import Panda
+from panda_ros.pose_transform_functions import orientation_2_quaternion, pose_st_2_transformation, transform_pose, transformation_2_pose
+
+import tf
+from platonics_vision.srv import SiftRegistrationLocalizerRequest, SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse
+from platonics_vision.srv import SaveTemplateRequest, SaveTemplate
+import numpy as np
+
+from geometry_msgs.msg import PoseStamped, Pose
+from tf.transformations import euler_from_quaternion
+from queue import Queue
+import rospy
+import rospkg
+import yaml
+
+class ActiveLocalizerNode():
+    def __init__(self) -> None:
+        rospy.init_node("iterative_sift_localizer")
+        self._rate = rospy.Rate(1)
+        self._panda = Panda()
+        rospack = rospkg.RosPack()
+        self._templates_folder = rospack.get_path("platonics_vision") + "/data/"
+        rospy.wait_for_service('sift_localization')
+        self.compute_box_tf = rospy.ServiceProxy('sift_localization', SiftRegistrationLocalizer)
+        self._template_folder_name = "demo"
+
+        self._iterative_sift_service = rospy.Service('iterative_sift_localizer', IterativeRegistrationLocalizer, self.handle_request)
+
+
+        self._tf_listener = tf.TransformListener()
+
+        self.position_accuracy = 0.001
+        self.orientation_accuracy=0.2 *(np.pi/180)
+        self.timeout_counter = 15
+
+    @property
+    def height(self) -> float:
+        return self._params['height']
+
+    @property
+    def home_pose(self) -> PoseStamped:
+        home_pose = PoseStamped()
+        home_pose.header.frame_id = 'panda_link0'
+        home_pose.pose.position.x = float(self._params['position']['x'])
+        home_pose.pose.position.y = float(self._params['position']['y'])
+        home_pose.pose.position.z = float(self._params['position']['z'])
+        home_pose.pose.orientation.x = float(self._params['orientation']['x'])
+        home_pose.pose.orientation.y = float(self._params['orientation']['y'])
+        home_pose.pose.orientation.z = float(self._params['orientation']['z'])
+        home_pose.pose.orientation.w = float(self._params['orientation']['w'])
+        return home_pose
+
+
+
+
+    def handle_request(self, req: IterativeRegistrationLocalizer):
+        parameter_file = self._templates_folder + self._template_folder_name + '/params.yaml'
+        with open(parameter_file) as f:
+            self._params = yaml.safe_load(f)
+
+        self._panda.go_to_pose_ik(self.home_pose)
+
+        self._rate.sleep()
+        sift_request = SiftRegistrationLocalizerRequest()
+        sift_request.template_folder_name.data = self._template_folder_name
+        response = IterativeRegistrationLocalizerResponse()
+
+        for i in range(req.steps.data):
+            rospy.loginfo(f"Step {i}")
+            position = self._panda.curr_pos
+            ori = list_2_quaternion(self._panda.curr_ori)
+            home_pose = array_quat_2_pose(position, ori)
+            try:
+                resp = self.compute_box_tf(sift_request)
+                box_tf = resp.pose
+
+                ori = [
+                    resp.pose.pose.orientation.x,
+                    resp.pose.pose.orientation.y,
+                    resp.pose.pose.orientation.z,
+                    resp.pose.pose.orientation.w
+                ]
+                xy_yaw = [
+                    resp.pose.pose.position.x, 
+                    resp.pose.pose.position.y,
+                    euler_from_quaternion(ori)[2]
+                ]
+
+            except Exception as e:
+                rospy.logwarn(e)
+                continue
+            self._transformed_pose = self.transform(box_tf, home_pose)
+            self._panda.go_to_pose_ik(self._transformed_pose)
+            self._panda.offset_compensator(10)
+            rospy.loginfo("Finished go to.")
+            """
+            pos_error = np.linalg.norm(xy_yaw[:2])
+            yaw_error = abs(xy_yaw[2])
+            print(f"position error {pos_error}, yaw error {yaw_error}")
+            if (pos_error < self.position_accuracy and yaw_error < self.orientation_accuracy or self.timeout_counter > self.timeout_counter):
+                final_resp.message = f"Finished localization, final error: {pos_error + yaw_error}"
+                final_resp.success = True
+                print(final_resp.message)
+                return final_resp
+            self.timeout_counter = self.timeout_counter + 1
+            """
+        response.success.data = True
+        response.pose = self.compute_transform()
+        return response
+    
+    def compute_transform(self) -> Pose:
+        transform_new = pose_st_2_transformation(self._panda.curr_pose)
+        home_pose_matrix = pose_st_2_transformation(self.home_pose)
+        print('transform_new', transform_new)
+        print('home pose', home_pose_matrix)
+        final_transform =  transform_new @ np.linalg.inv(home_pose_matrix)
+        final_transform[2,0]=0
+        final_transform[0,2]=0
+        final_transform[2,1]=0
+        final_transform[1,2]=0
+        final_transform[2,2]=1
+        final_transform[2,3]=0
+        final_pose = transformation_2_pose(final_transform)
+        return final_pose.pose
+
+    def get_transform(self, source_frame, target_frame):
+        while True:
+            try:
+                now = rospy.Time.now()
+                self._tf_listener.waitForTransform(source_frame, target_frame, now, rospy.Duration(4.0))
+                rp_tr, rp_rt = self._tf_listener.lookupTransform(source_frame, target_frame, now)
+                break
+            except Exception as e:
+                rospy.logwarn(e)
+        transform = np.dot(tf.transformations.translation_matrix(rp_tr), tf.transformations.quaternion_matrix(rp_rt))
+        return transform
+    
+    def transform(self, transformation_pose, pose):
+        transform_base_2_cam = self.get_transform('panda_link0', 'camera_color_optical_frame')
+        
+        # if transform box is not in camera frame, remove the base_2_cam transforms
+        transform_box = pose_st_2_transformation(transformation_pose)
+        transform = transform_base_2_cam @ transform_box @ np.linalg.inv(transform_base_2_cam)
+
+        print("transforming", transform)
+        pose = transform_pose(pose, transform)
+        pose_quat = orientation_2_quaternion(pose.pose.orientation)
+
+        # Maintain orientation and only apply 'yaw' (rotation around EE z-axis)
+        pose.pose.orientation.z = 0
+        pose.pose.orientation.w = 0
+        new_magnitude = np.sqrt(pose_quat.x * pose_quat.x + pose_quat.y * pose_quat.y)
+        pose_quat.x = pose_quat.x / new_magnitude
+        pose_quat.y = pose_quat.y / new_magnitude
+        pose.pose.orientation.x = pose_quat.x
+        pose.pose.orientation.y = pose_quat.y
+
+        pose.pose.position.z=self.height  # Maintain same height
+        return pose
+
+if __name__ == '__main__':
+    active_localizer_node = ActiveLocalizerNode()
+    rospy.spin()
