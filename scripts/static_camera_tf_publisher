@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+import rospy
+import tf
+import numpy as np
+
+from panda_ros.pose_transform_functions import pose_2_transformation, transformation_2_pose
+from geometry_msgs.msg import Pose, Point, Quaternion
+
+
+def point_iter(self):
+    yield self.x
+    yield self.y
+    yield self.z
+
+def quat_iter(self):
+    yield self.x
+    yield self.y
+    yield self.z
+    yield self.w
+
+Point.__iter__ = point_iter
+Quaternion.__iter__ = quat_iter
+
+
+class StaticPublisher():
+
+    def __init__(self):
+        rospy.init_node('static_transform_publisher')
+        self._rate = rospy.Rate(100)
+        self._static_broadcaster = tf.TransformBroadcaster()
+
+        self._tf_listener = tf.TransformListener()
+        self.load_hand_optical_frame_pose()
+        rospy.sleep(5)
+
+    def load_hand_optical_frame_pose(self):
+        position = rospy.get_param("/camera_transform/translation", {})
+        orientation = rospy.get_param("/camera_transform/rotation", {})
+        self._hand_optical_pose = Pose()
+        self._hand_optical_pose.position.x = float(position['x'])
+        self._hand_optical_pose.position.y = float(position['y'])
+        self._hand_optical_pose.position.z = float(position['z'])
+        self._hand_optical_pose.orientation.x = float(orientation['x'])
+        self._hand_optical_pose.orientation.y = float(orientation['y'])
+        self._hand_optical_pose.orientation.z = float(orientation['z'])
+        self._hand_optical_pose.orientation.w = float(orientation['w'])
+
+    def get_static_tf_pose(self, parent_frame='camera_link', child_frame='camera_color_optical_frame'):
+
+        self._tf_listener.waitForTransform(parent_frame, child_frame, rospy.Time(), rospy.Duration(5))
+
+        translations, rotations = self._tf_listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+        self._link_optical_pose = Pose()
+        self._link_optical_pose.position = Point(*translations)
+        self._link_optical_pose.orientation = Quaternion(*rotations)
+
+    def get_hand_link_pose(self):
+        T_link_optical = pose_2_transformation(self._link_optical_pose)
+        T_hand_optical = pose_2_transformation(self._hand_optical_pose)
+        T_hand_link = np.dot(T_hand_optical, np.linalg.inv(T_link_optical))
+        self._hand_link_pose = transformation_2_pose(T_hand_link).pose
+
+
+    def run(self):
+        
+        while not rospy.is_shutdown():
+            self.get_static_tf_pose()
+            self.get_hand_link_pose()
+            self._static_broadcaster.sendTransform(
+                list(self._hand_link_pose.position),
+                list(self._hand_link_pose.orientation),
+                rospy.Time.now(),
+                "camera_link",
+                "panda_hand",
+            )
+            self._rate.sleep()
+
+if __name__ == '__main__':
+    node = StaticPublisher()
+    try:
+        node.run()
+    except rospy.ROSInterruptException:
+        pass

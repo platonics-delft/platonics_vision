@@ -17,9 +17,12 @@
     <arg name="enable_infra2" value="true"/>
     <arg name="json_file_path" value="${find platonics_vision}/config/settings_high_density.json"/>
   </include>
-  <node pkg="tf" type="static_transform_publisher" name="camera_tf_publisher" args="0.05521033 -0.01464011 0.06483151 0.707 0 0.707 0 panda_hand camera_link 100" output="screen"/>
+  <rosparam command="load" file="$(find platonics_vision)/config/camera_config.yaml" />
+
+  <node pkg="platonics_vision" type="static_camera_tf_publisher" name="camera_tf_publisher" output="screen"/>
+
   <group if="$(arg rviz)">
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find platonics_vision)/config/camera.rviz" required="true" output="screen"/>
+    <node name="rviz_camera" pkg="rviz" type="rviz" args="-d $(find platonics_vision)/config/camera.rviz" required="true" output="screen"/>
   </group>
 </launch>
 
