@@ -61,13 +61,13 @@ class LocalizationService():
         self._localizer.set_intrinsics(self._fx, self._fy, self.cx_cy_array[0], self.cx_cy_array[1])
 
 
-    def compute_localization_in_pixels(self, template_folder_name: str):
+    def compute_localization_in_m(self, template_folder_name: str):
         cv_image = self.bridge.imgmsg_to_cv2(self._img, "bgr8")
         template_file = self._templates_folder + template_folder_name + "/full_image.png"
         params_file = self._templates_folder + template_folder_name + "/params.yaml"
         params = yaml.load(open(params_file, 'r'), Loader=yaml.FullLoader)
         self._localizer.set_cropping(params['crop'])
-        self._localizer.set_box_depth(params['depth'])
+        self._localizer.set_box_depth(float(params['depth']) * 0.001)
         self._localizer.set_template(template_file)
         self._localizer.set_image(cv_image)
         try:
@@ -85,7 +85,7 @@ class LocalizationService():
 
 
     def handle_request(self, req: SiftRegistrationLocalizer):
-        tf_matrix = self.compute_localization_in_pixels(req.template_folder_name.data)
+        tf_matrix = self.compute_localization_in_m(req.template_folder_name.data)
         
         position = tf_matrix[0:3, 3]
         quaternion = tf.transformations.quaternion_from_matrix(tf_matrix[0:4, 0:4])

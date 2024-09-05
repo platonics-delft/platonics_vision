@@ -40,6 +40,9 @@ class SiftTemplate():
         self.depth_image = self.bridge.imgmsg_to_cv2(depth_img, desired_encoding="passthrough")
         self.save_dir = name
         self.params['template_path'] = self.save_dir + "/full_image.png"
+        # force overwrite
+        if os.path.exists(self.save_dir):
+            os.system(f"rm -r {self.save_dir}")
         os.mkdir(self.save_dir)
         depth=None
         cv2.imwrite(f"{self.save_dir}/full_image.png", self.image)
@@ -49,6 +52,7 @@ class SiftTemplate():
         print("Press 'q' to quit")
         # Create window and set mouse callback function
         cv2.destroyAllWindows()
+        cv2.namedWindow("image")
         cv2.setMouseCallback("image", self.crop_image)
         cv2.imshow("image", self.image)
 

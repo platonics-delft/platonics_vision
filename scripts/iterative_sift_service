@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from panda_ros.pose_transform_functions import list_2_quaternion, array_quat_2_pose
+from panda_ros.pose_transform_functions import list_2_quaternion, pos_quat_2_pose_st
 from platonics_vision.srv import IterativeRegistrationLocalizer, IterativeRegistrationLocalizerResponse, IterativeRegistrationLocalizerRequest, SavingPointcloudRequest
 from sensor_msgs.msg import Image
 from panda_ros import Panda
@@ -8,7 +8,6 @@ from panda_ros.pose_transform_functions import orientation_2_quaternion, pose_st
 
 import tf
 from platonics_vision.srv import SiftRegistrationLocalizerRequest, SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse
-from platonics_vision.srv import SaveTemplateRequest, SaveTemplate
 import numpy as np
 
 from geometry_msgs.msg import PoseStamped, Pose
@@ -25,9 +24,10 @@ class ActiveLocalizerNode():
         self._panda = Panda()
         rospack = rospkg.RosPack()
         self._templates_folder = rospack.get_path("platonics_vision") + "/data/"
+
         rospy.wait_for_service('sift_localization')
         self.compute_box_tf = rospy.ServiceProxy('sift_localization', SiftRegistrationLocalizer)
-        self._template_folder_name = "demo"
+        self._template_folder_name = "test_45"
 
         self._iterative_sift_service = rospy.Service('iterative_sift_localizer', IterativeRegistrationLocalizer, self.handle_request)
 
@@ -40,7 +40,7 @@ class ActiveLocalizerNode():
 
     @property
     def height(self) -> float:
-        return self._params['height']
+        return float(self._params['position']['z'])
 
     @property
     def home_pose(self) -> PoseStamped:
@@ -74,7 +74,7 @@ class ActiveLocalizerNode():
             rospy.loginfo(f"Step {i}")
             position = self._panda.curr_pos
             ori = list_2_quaternion(self._panda.curr_ori)
-            home_pose = array_quat_2_pose(position, ori)
+            home_pose = pos_quat_2_pose_st(position, ori)
             try:
                 resp = self.compute_box_tf(sift_request)
                 box_tf = resp.pose
