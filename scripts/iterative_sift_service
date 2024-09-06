@@ -27,7 +27,6 @@ class ActiveLocalizerNode():
 
         rospy.wait_for_service('sift_localization')
         self.compute_box_tf = rospy.ServiceProxy('sift_localization', SiftRegistrationLocalizer)
-        self._template_folder_name = "test_45"
 
         self._iterative_sift_service = rospy.Service('iterative_sift_localizer', IterativeRegistrationLocalizer, self.handle_request)
 
@@ -59,7 +58,8 @@ class ActiveLocalizerNode():
 
 
     def handle_request(self, req: IterativeRegistrationLocalizer):
-        parameter_file = self._templates_folder + self._template_folder_name + '/params.yaml'
+
+        parameter_file = self._templates_folder + req.template_file_name.data + '/params.yaml'
         with open(parameter_file) as f:
             self._params = yaml.safe_load(f)
 
@@ -67,7 +67,7 @@ class ActiveLocalizerNode():
 
         self._rate.sleep()
         sift_request = SiftRegistrationLocalizerRequest()
-        sift_request.template_folder_name.data = self._template_folder_name
+        sift_request.template_folder_name = req.template_file_name
         response = IterativeRegistrationLocalizerResponse()
 
         for i in range(req.steps.data):
