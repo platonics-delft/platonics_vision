@@ -16,9 +16,7 @@ from std_msgs.msg import Float32
 
 class TriangleDetector():
     def __init__(self):
-        super(TriangleDetector, self).__init__()
-
-        self.detection_score_threshold = 0.98
+        self.detection_score_threshold = 0.6
         self.cv2_text_label_font_ = cv2.FONT_HERSHEY_SIMPLEX
         self.cv2_text_label_font_scale_ = 0.35
         self.template_matching_method = cv2.TM_CCOEFF_NORMED
@@ -220,9 +218,9 @@ class TriangleDetector():
                                 f'between templates {self.initial_point_id} and ' + \
                                 f'{self.goal_point_id} in image space: ' + \
                                 f'{estimated_pixel_distance} ')
-                rospy.loginfo(f'[slider_task_solver] Estimated distance ' + \
-                                f'to move the slider to solve the task: ' + \
-                                f'{estimated_slider_distance }.')
+                # rospy.loginfo(f'[slider_task_solver] Estimated distance ' + \
+                #                 f'to move the slider to solve the task: ' + \
+                #                 f'{estimated_slider_distance }.')
 
             if publish_visual_output:
                 debug_image_msg = self.bridge.cv2_to_imgmsg(vis_image_array, 
@@ -230,3 +228,9 @@ class TriangleDetector():
 
                 debug_image_msg.header.stamp = rospy.Time.now()
                 self.slider_solver_image_publisher.publish(debug_image_msg)
+
+                curr_image_copy = self.curr_image.copy()
+                curr_image_copy_hsv = cv2.cvtColor(curr_image_copy, cv2.COLOR_BGR2Lab)
+                curr_image_copy_msg = self.bridge.cv2_to_imgmsg(curr_image_copy_hsv, encoding="bgr8")
+                self.slider_solver_hsv_image_publisher.publish(curr_image_copy_msg)
+        return estimated_pixel_distance
