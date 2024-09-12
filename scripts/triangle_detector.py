@@ -30,13 +30,16 @@ class TriangleDetector():
 
         self.image_sub = rospy.Subscriber('/camera/color/image_raw', Image, self.image_callback)
 
-        self.slider_distance_publisher = rospy.Publisher('/triangle_detector_distance')
-        self.slider_solver_image_publisher = rospy.Publisher('/triangle_detection_image')
+        self.slider_distance_publisher = rospy.Publisher('/triangle_detector_distance', Float32, queue_size=0)
+        self.slider_solver_image_publisher = rospy.Publisher('/triangle_detection_image', Image, queue_size=0)
+        self.slider_solver_hsv_image_publisher = rospy.Publisher('/triangle_detector_hsv_image', Image, queue_size=0)
 
         self.bridge = CvBridge()
         self.template_images_dict = None
+        package_path = rospkg.RosPack().get_path('platonics_vision')
+        image_dir_path = package_path + '/data/triangle_templates'
 
-        self.load_template_images(image_dir_path='', object_ids=['red', 'white_center'])
+        self.load_template_images(image_dir_path, object_ids=['red', 'white_center'])
 
         rospy.sleep(1)
 
@@ -206,7 +209,7 @@ class TriangleDetector():
             rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
                             f'slider motion distance!')
         else:
-            estimated_slider_distance = estimated_pixel_distance
+            # estimated_slider_distance = estimated_pixel_distance
 
             slider_solution_msg = Float32()
             slider_solution_msg.data = estimated_pixel_distance 
