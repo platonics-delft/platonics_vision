@@ -15,15 +15,15 @@ class SliderSolver():
     def __init__(self):
         self.control_rate = 30
         self.rate=rospy.Rate(self.control_rate)
-        self.move_increment = 0.0001
+        self.move_increment = 0.0003
 
         self.robot = Panda()
-        self.triangle_detector = TriangleDetector()
+        self._triangle_detector = TriangleDetector()
 
         self.safe_distance_lin=0.005
         self.safe_distance_ori=0.020
 
-        self.success_threshold = 5
+        self.success_threshold = 3
 
         self.acceptable_camera_delay_steps = 2
 
