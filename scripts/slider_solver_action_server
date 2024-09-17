@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import rospy
 import actionlib
+import dynamic_reconfigure.client
 
 from slider_solver import SliderSolver
-from skills_manager.msg import SolveSliderAction, SolveSliderGoal, SolveSliderFeedback, SolveSliderResult
+from platonics_vision.msg import SolveSliderAction, SolveSliderGoal, SolveSliderFeedback, SolveSliderResult
 from platonics_vision.srv import SavingTemplate, SavingTemplateRequest, SavingTemplateResponse
 from platonics_vision.triangle_detection_template import TriangleTemplate
 
@@ -22,8 +23,13 @@ class SliderSolverServer():
         )
         self._slider_solver_action_server.start()
         rospy.Service("save_triangles_templates_service", SavingTemplate, self.handle_save_template_request)
+        self._exposure_client = dynamic_reconfigure.client.Client("/camera/stereo_module", timeout=10)
+        self._detection_params = {'exposure': 9000, 'enable_auto_exposure': False}
+        self._running_params = {'enable_auto_exposure': True}
+
 
     def solve_slider(self, goal: SolveSliderGoal):
+        self._exposure_client.update_configuration(self._detection_params)
         result = SolveSliderResult()
         feedback = SolveSliderFeedback()
         task_stage = goal.task_stage
@@ -42,13 +48,16 @@ class SliderSolverServer():
                 result.success = True
                 self._slider_solver_action_server.set_succeeded(result)
                 break
+        self._exposure_client.update_configuration(self._running_params)
 
     def handle_save_template_request(self, req: SavingTemplateRequest):
+        self._exposure_client.update_configuration(self._detection_params)
         name_template = self._slider_solver._triangle_detector.image_dir_path + req.template_name.data
         print("Recording template name: ", name_template)
         self._triangles_template.record(img=self._slider_solver._triangle_detector.curr_image, name=name_template)
         response = SavingTemplateResponse()
         response.success.data = True
+        self._exposure_client.update_configuration(self._running_params)
         return response
 
     def run(self):

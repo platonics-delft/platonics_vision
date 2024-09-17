@@ -49,10 +49,10 @@ class SliderSolver():
 
         self.robot.change_in_safety_check = False
         if task_stage == 1:
-            object_ids = ['red', 'white_center']
-        if task_stage == 2:
+            object_ids = ['red', 'yellow']
+        elif task_stage == 2:
             object_ids = ['red', 'green']
-        self.triangle_detector.load_template_images(self.image_dir_path, object_ids, debug=True)
+        self._triangle_detector.load_template_images(self.image_dir_path, object_ids, debug=True)
         self.end = False
 
     def execute_step(self, task_stage) -> bool:
@@ -65,7 +65,7 @@ class SliderSolver():
                 self.robot.set_stiffness(self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, 0)
                 return True
             
-        self.triangles_distance = self.triangle_detector.detect_triangles(debug=True)
+        self.triangles_distance = self._triangle_detector.detect_triangles(debug=True)
         if self.triangles_distance is not None:
             direction = np.sign(self.triangles_distance)
             if self.goal_pose is not None:

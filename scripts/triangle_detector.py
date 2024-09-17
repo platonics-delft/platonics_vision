@@ -16,11 +16,11 @@ from std_msgs.msg import Float32
 
 class TriangleDetector():
     def __init__(self):
-        self.detection_score_threshold = 0.6
+        self.detection_score_threshold = 0.8
         self.cv2_text_label_font_ = cv2.FONT_HERSHEY_SIMPLEX
         self.cv2_text_label_font_scale_ = 0.35
         self.template_matching_method = cv2.TM_CCOEFF_NORMED
-        self.text_label_colors_ = dict(zip(['red', 'white_center', 'green', 'lcd'], 
+        self.text_label_colors_ = dict(zip(['red', 'yellow', 'green', 'lcd'], 
                                     [(0, 0, 255), (255, 255, 255), 
                                     (0, 255, 0), (255, 0, 0)]))
 
@@ -37,7 +37,7 @@ class TriangleDetector():
         package_path = rospkg.RosPack().get_path('platonics_vision')
         self.image_dir_path = package_path + '/data/triangle_templates/'
 
-        self.load_template_images(self.image_dir_path, object_ids=['red', 'white_center'])
+        #self.load_template_images(self.image_dir_path, object_ids=['red', 'white_center'])
 
         rospy.sleep(1)
 
@@ -51,7 +51,7 @@ class TriangleDetector():
             print(e)
 
     def load_template_images(self, image_dir_path, 
-                         object_ids=['red', 'white_center', 'lcd'],
+                         object_ids=['red', 'yellow', 'lcd'],
                          debug=False):
         """
         Loads all images that can be uses as templates for the given object_ids
@@ -77,14 +77,19 @@ class TriangleDetector():
 
         # Load template images:
         self.template_images_dict = {}
+
         image_filename_list = [filename for filename in os.listdir(image_dir_path) \
                                 if 'template' in filename]
+
 
         for object_id in object_ids:
             if object_id not in self.template_images_dict.keys():
                 self.template_images_dict[object_id] = []
             # Grab first valid image for each template:
             for image_filename in image_filename_list:
+                # if image_filename is folder skip
+                if os.path.isdir(os.path.join(image_dir_path, image_filename)):
+                    continue
                 if object_id in image_filename:
                     if debug:
                         print(f'[DEBUG] Using image for {object_id}: ' + \
