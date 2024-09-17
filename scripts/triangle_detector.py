@@ -35,9 +35,9 @@ class TriangleDetector():
         self.bridge = CvBridge()
         self.template_images_dict = None
         package_path = rospkg.RosPack().get_path('platonics_vision')
-        image_dir_path = package_path + '/data/triangle_templates'
+        self.image_dir_path = package_path + '/data/triangle_templates/'
 
-        self.load_template_images(image_dir_path, object_ids=['red', 'white_center'])
+        self.load_template_images(self.image_dir_path, object_ids=['red', 'white_center'])
 
         rospy.sleep(1)
 

@@ -5,7 +5,7 @@ import actionlib
 from slider_solver import SliderSolver
 from skills_manager.msg import SolveSliderAction, SolveSliderGoal, SolveSliderFeedback, SolveSliderResult
 from platonics_vision.srv import SavingTemplate, SavingTemplateRequest, SavingTemplateResponse
-from platonics_vision.triangles_detection_templates import TrianglesTemplate
+from platonics_vision.triangle_detection_template import TriangleTemplate
 
 from panda_ros.pose_transform_functions import pose_2_transformation
 
@@ -13,7 +13,7 @@ class SliderSolverServer():
     def __init__(self):
         rospy.init_node("slider_node")
         self._slider_solver = SliderSolver()
-        self._triangles_template = TrianglesTemplate()
+        self._triangles_template = TriangleTemplate()
         self.establish_ros_connections()
 
     def establish_ros_connections(self):
@@ -46,7 +46,7 @@ class SliderSolverServer():
     def handle_save_template_request(self, req: SavingTemplateRequest):
         name_template = self._slider_solver._triangle_detector.image_dir_path + req.template_name.data
         print("Recording template name: ", name_template)
-        self._slider_solver._triangle_detector.record(img=self._img, depth_img=self._depth_img, name=name_template)
+        self._triangles_template.record(img=self._slider_solver._triangle_detector.curr_image, name=name_template)
         response = SavingTemplateResponse()
         response.success.data = True
         return response
