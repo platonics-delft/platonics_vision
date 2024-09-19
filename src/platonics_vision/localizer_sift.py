@@ -1,6 +1,10 @@
 import numpy as np
 import cv2
 import logging
+from geometry_msgs.msg import Pose
+import matplotlib.pyplot as plt
+
+from panda_ros.pose_transform_functions import pose_2_transformation
 MIN_MATCH_COUNT = 2
 
 
@@ -21,11 +25,11 @@ class Localizer(object):
         self._logger.setLevel(level)
 
     def set_depth_template(self, depth_template_filename) -> None:
-        self._depth_template = cv2.imread(depth_template_filename, 0)
+        self._depth_template = np.load(depth_template_filename)
+        cv2.imwrite('/home/mspahn/temp/depth_template.png', self._depth_template)
 
     def set_template(self, template) -> None:
         assert isinstance(template, str)
-        print(template)
         self._full_template = cv2.imread(template, 0)
         cropped_h = self._cropping[2:]
         cropped_w = self._cropping[:2]
@@ -101,6 +105,7 @@ class Localizer(object):
                 flags=2,
             )
             self._annoted_image = cv2.drawMatches(self._full_template, kp1, self._img, kp2, good, None, **draw_params)
+            cv2.imwrite('/home/mspahn/temp/annoted_image.png', self._annoted_image)
 
 
             if self._logger.level == logging.DEBUG:
@@ -114,46 +119,132 @@ class Localizer(object):
     def annoted_image(self):
         return self._annoted_image
 
+    def set_template_tf(self, tf: dict) -> None:
+        pose = Pose()
+        pose.position.x = float(tf['position']['x'])
+        pose.position.y = float(tf['position']['y'])
+        pose.position.z = float(tf['position']['z'])
+        pose.orientation.x = float(tf['orientation']['x'])
+        pose.orientation.y = float(tf['orientation']['y'])
+        pose.orientation.z = float(tf['orientation']['z'])
+        pose.orientation.w = float(tf['orientation']['w'])
+        self._template_tf = pose_2_transformation(pose)
+
     def get_depth_value_of_feature(self, feature_position_pixel, template=False) -> float:
         # spatial median filter of are of nx x ny pixels
-        nx = 5
-        ny = 5
+        nx = 10
+        ny = 10
         x = round(feature_position_pixel[0])
         y = round(feature_position_pixel[1])
         x_start = x - nx // 2
         x_end = x + nx // 2
         y_start = y - ny // 2
         y_end = y + ny // 2
+        if nx == 1:
+            x_start = x
+            x_end = x+1
+        if ny == 1:
+            y_start = y
+            y_end = y+1
+
         if template:
             value = np.median(self._depth_template[y_start:y_end, x_start:x_end]) * 0.001
         else:
             value = np.median(self._depth_img[y_start:y_end, x_start:x_end]) * 0.001
         return value
 
-
-
-    def compute_tf(self) -> np.ndarray:
+    def save_all_heights(self, panda_link_tf) -> None:
         pixel_values_src = np.array(self._src_pts)[:, 0, :]
         pixel_values_dst = np.array(self._dst_pts)[:, 0, :]
-        p0 = np.transpose(pixel_values_src) - self.cx_cy_array
-        p1 = np.transpose(pixel_values_dst) - self.cx_cy_array 
+        p_src = np.transpose(pixel_values_src) - self.cx_cy_array
+        p_dst = np.transpose(pixel_values_dst) - self.cx_cy_array 
+        n_features = pixel_values_src.shape[0]
+        nx = 480
+        ny = 848
+        xyz_src = np.zeros((nx, ny, 3))
+
+        for i in range(nx):
+            for j in range(ny):
+                xyz_src[i, j, 2] = self.get_depth_value_of_feature([i, j])
+                xyz_src[i, j, 0] = (i - self.cx_cy_array[0])/self._fx * xyz_src[i, j, 2]
+                xyz_src[i, j, 1] = (j - self.cx_cy_array[1])/self._fy * xyz_src[i, j, 2]
+
+        np.save('/home/mspahn/temp/xyz_src.npy', xyz_src)
+
+    def get_depths(self):
+
+        pixel_values_src = np.array(self._src_pts)[:, 0, :]
+        pixel_values_dst = np.array(self._dst_pts)[:, 0, :]
+        p_src = np.transpose(pixel_values_src) - self.cx_cy_array
+        p_dst = np.transpose(pixel_values_dst) - self.cx_cy_array 
         n_features = pixel_values_src.shape[0]
         z_src = np.zeros(n_features)
         z_dst = np.zeros(n_features)
         for i in range(n_features):
-            z_src[i] = self.get_depth_value_of_feature(pixel_values_src[i])
-            z_dst[i] = self.get_depth_value_of_feature(pixel_values_dst[i], template=True)
-        xy_src = np.transpose(p0 / self._fx * z_src)
-        xy_dst = np.transpose(p0 / self._fy * z_dst)
-        points_src = np.hstack((xy_src, z_src.reshape(-1,1)))
-        points_dst = np.hstack((xy_dst, z_dst.reshape(-1,1))
+            z_src[i] = self.get_depth_value_of_feature(pixel_values_src[i], template=True)
+            z_dst[i] = self.get_depth_value_of_feature(pixel_values_dst[i], template=False)
+        return np.median(z_src), np.median(z_dst)
 
-        T0 = compute_transform(p0, p1) #this matrix is a 3x3
+
+    def compute_tf(self, panda_link_tf) -> np.ndarray:
+        version_2d = True
+        pixel_values_src = np.array(self._src_pts)[:, 0, :]
+        pixel_values_dst = np.array(self._dst_pts)[:, 0, :]
+        p_src = np.transpose(pixel_values_src) - self.cx_cy_array
+        p_dst = np.transpose(pixel_values_dst) - self.cx_cy_array 
+        n_features = pixel_values_src.shape[0]
+        z_src = np.zeros(n_features)
+        z_dst = np.zeros(n_features)
+        for i in range(n_features):
+            z_src[i] = self.get_depth_value_of_feature(pixel_values_src[i], template=True)
+            z_dst[i] = self.get_depth_value_of_feature(pixel_values_dst[i], template=False)
+
+        if version_2d:
+            z_src = np.ones_like(z_src) * np.median(z_src)
+            z_dst = np.ones_like(z_dst) * np.median(z_dst)
+        xy_src = np.zeros((2, n_features))
+        xy_dst = np.zeros((2, n_features))
+        xy_src[0, :] = p_src[0, :] / self._fx * z_src
+        xy_src[1, :] = p_src[1, :] / self._fy * z_src
+        xy_dst[0, :] = p_dst[0, :] / self._fx * z_dst
+        xy_dst[1, :] = p_dst[1, :] / self._fy * z_dst
+        xyz1_src = np.vstack((xy_src, z_src, np.ones(n_features)))
+        xyz1_dst = np.vstack((xy_dst, z_dst, np.ones(n_features)))
+        xyz1_dst_panda_link = np.dot(panda_link_tf, xyz1_dst)[:3, :]
+        xyz1_src_panda_link = np.dot(self._template_tf, xyz1_src)[:3, :]
+        if version_2d:
+            xy_src = xyz1_src_panda_link[:2, :]
+            xy_dst = xyz1_dst_panda_link[:2, :]
+            T0_2d = compute_transform(xy_src, xy_dst)
+            T0 = np.eye(4)
+            T0[0:2, 0:2] = T0_2d[0:2, 0:2]
+            T0[0:2, 3] = T0_2d[0:2, 2]
+            print(f'using depth : {T0}')
+
+
+        else:
+            np.save('/home/mspahn/temp/xyz1_src_panda_link.npy', xyz1_src_panda_link)
+            np.save('/home/mspahn/temp/xyz1_dst_panda_link.npy', xyz1_dst_panda_link)
+            T0, mask = compute_transform_3d(xyz1_src_panda_link, xyz1_dst_panda_link)
+            np.save('/home/mspahn/temp/mask.npy', mask)
 
         return T0
 
-    def compute_full_tf_in_m(self) -> np.ndarray:
-        T0 = self.compute_tf()
+    def compute_full_tf_in_m_new(self, panda_link_tf: np.ndarray) -> np.ndarray:
+        print('new')
+        return self.compute_tf(panda_link_tf)
+
+    def compute_tf_old(self, panda_link_tf) -> np.ndarray:
+        p0 = np.transpose(np.array(self._src_pts))[:, 0, :] - self.cx_cy_array
+        p1 = np.transpose(np.array(self._dst_pts))[:, 0, :] - self.cx_cy_array 
+        T0 = compute_transform(p0, p1) #this matrix is a 3x3
+        return T0
+
+    def compute_full_tf_in_m(self, panda_link_tf: np.ndarray) -> np.ndarray:
+        print('old')
+        depth_src, depth_dst = self.get_depths()
+        depth_difference = depth_src - depth_dst
+        T0 = self.compute_tf_old(panda_link_tf)
         self._pixel_m_factor_u =  self._fx / self._box_depth
         self._pixel_m_factor_v =  self._fy / self._box_depth
         T0[0, 2] /= self._pixel_m_factor_u
@@ -161,7 +252,21 @@ class Localizer(object):
         T = np.identity(4)
         T[0:2, 0:2] = T0[0:2, 0:2]
         T[0:2, 3] = T0[0:2, 2]
+        T[2, 3] = depth_difference
         return T
+        T_world = np.dot(np.dot(panda_link_tf, T), np.linalg.inv(panda_link_tf))
+        T_world[2, 3] = depth_difference
+        return T_world
+
+def compute_transform_3d(points: np.ndarray, transformed_points: np.ndarray):
+    assert isinstance(points, np.ndarray)
+    assert isinstance(transformed_points, np.ndarray)
+    assert points.shape == transformed_points.shape
+    affine3d_output = cv2.estimateAffine3D(points.T, transformed_points.T, ransacThreshold=5e-3)
+    T = np.identity(4)
+    T[0:3, 0:4] = affine3d_output[1]
+    mask = affine3d_output[2]
+    return T, mask
     
 def compute_transform(points: np.ndarray, transformed_points: np.ndarray):
     assert isinstance(points, np.ndarray)

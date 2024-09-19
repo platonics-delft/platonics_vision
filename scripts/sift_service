@@ -10,6 +10,7 @@ import numpy as np
 from platonics_vision.srv import SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse
 from platonics_vision.srv import SavingTemplate, SavingTemplateRequest, SavingTemplateResponse
 import rospkg
+import tf2_ros
 import tf
 import yaml
 
@@ -32,10 +33,28 @@ class LocalizationService():
 
         self.establish_ros_connections()
 
+    def get_transformation_matrix(self, source_frame='panda_link0', target_frame='camera_color_optical_frame'):
+    
+        # Get the transformation matrix
+        try:
+            transform = self._tf_buffer.lookup_transform(source_frame, target_frame, rospy.Time(0), rospy.Duration(1.0))
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rospy.logerr("Transform not available")
+            return None
+        # Convert transform to a 4x4 matrix
+        trans = transform.transform.translation
+        rot = transform.transform.rotation
+        return np.array([
+            [1-2*(rot.y**2 + rot.z**2), 2*(rot.x*rot.y - rot.z*rot.w), 2*(rot.x*rot.z + rot.y*rot.w), trans.x],
+            [2*(rot.x*rot.y + rot.z*rot.w), 1-2*(rot.x**2 + rot.z**2), 2*(rot.y*rot.z - rot.x*rot.w), trans.y],
+            [2*(rot.x*rot.z - rot.y*rot.w), 2*(rot.y*rot.z + rot.x*rot.w), 1-2*(rot.x**2 + rot.y**2), trans.z],
+            [0, 0, 0, 1]
+        ])
+
     def handle_save_template_request(self, req: SavingTemplateRequest):
         name_template = self._templates_folder + req.template_name.data
         print("Recording template name: ", name_template)
-        self._sift_template.record(img=self._img, depth_img=self._depth_img, name=name_template)
+        self._sift_template.record(img=self._img, depth_img=self._depth_img, name=name_template, panda_link_tf=self.get_transformation_matrix())
         response = SavingTemplateResponse()
         response.success.data = True
         return response
@@ -46,7 +65,9 @@ class LocalizationService():
         self._save_template_service = rospy.Service('saving_sift_template', SavingTemplate, self.handle_save_template_request)
         rospy.Subscriber("/camera/color/camera_info", CameraInfo, self.camera_info_callback)
         self.image_sub = rospy.Subscriber('/camera/color/image_raw', Image, self.image_callback)
-        self.depth_image_sub = rospy.Subscriber('camera/depth/image_rect_raw', Image, self.depth_image_callback)
+        self.depth_image_sub = rospy.Subscriber('camera/depth/image_filtered', Image, self.depth_image_callback)
+        self._tf_buffer = tf2_ros.Buffer()
+        self._tf_listener = tf2_ros.TransformListener(self._tf_buffer)
 
     def image_callback(self, img: Image):
         self._img = img
@@ -69,8 +90,9 @@ class LocalizationService():
         self._localizer.set_cropping(params['crop'])
         self._localizer.set_box_depth(float(params['depth']) * 0.001)
         self._localizer.set_template(template_file)
-        self._localizer.set_depth_template(self._templates_folder + template_folder_name + "/depth.png")
+        self._localizer.set_depth_template(self._templates_folder + template_folder_name + "/depth.npy")
         self._localizer.set_image(cv_image)
+        self._localizer.set_template_tf(params['panda_link_tf'])
         depth_image = self.bridge.imgmsg_to_cv2(self._depth_img, desired_encoding="passthrough")
         self._localizer.set_depth_image(depth_image)
         try:
@@ -79,7 +101,7 @@ class LocalizationService():
             print(e)
             print('Returning identity')
             return np.identity(4)
-        tf_matrix = self._localizer.compute_full_tf_in_m()
+        tf_matrix = self._localizer.compute_full_tf_in_m(self.get_transformation_matrix())
         return tf_matrix
     
     def publish_annoted_image(self):
