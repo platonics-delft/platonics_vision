@@ -20,6 +20,9 @@ class Localizer(object):
     def set_log_level(self, level: int):
         self._logger.setLevel(level)
 
+    def set_depth_template(self, depth_template_filename) -> None:
+        self._depth_template = cv2.imread(depth_template_filename, 0)
+
     def set_template(self, template) -> None:
         assert isinstance(template, str)
         print(template)
@@ -40,6 +43,9 @@ class Localizer(object):
         self._fy = fy
         self.cx_cy_array = np.array([cx, cy])
 
+
+    def set_depth_image(self, depth_image) -> None:
+        self._depth_img = depth_image
 
     def set_image(self, img) -> None:
         self._img = img
@@ -108,10 +114,40 @@ class Localizer(object):
     def annoted_image(self):
         return self._annoted_image
 
-    def compute_tf(self) -> np.ndarray:
+    def get_depth_value_of_feature(self, feature_position_pixel, template=False) -> float:
+        # spatial median filter of are of nx x ny pixels
+        nx = 5
+        ny = 5
+        x = round(feature_position_pixel[0])
+        y = round(feature_position_pixel[1])
+        x_start = x - nx // 2
+        x_end = x + nx // 2
+        y_start = y - ny // 2
+        y_end = y + ny // 2
+        if template:
+            value = np.median(self._depth_template[y_start:y_end, x_start:x_end]) * 0.001
+        else:
+            value = np.median(self._depth_img[y_start:y_end, x_start:x_end]) * 0.001
+        return value
 
-        p0 = np.transpose(np.array(self._src_pts))[:, 0, :] - self.cx_cy_array
-        p1 = np.transpose(np.array(self._dst_pts))[:, 0, :] - self.cx_cy_array 
+
+
+    def compute_tf(self) -> np.ndarray:
+        pixel_values_src = np.array(self._src_pts)[:, 0, :]
+        pixel_values_dst = np.array(self._dst_pts)[:, 0, :]
+        p0 = np.transpose(pixel_values_src) - self.cx_cy_array
+        p1 = np.transpose(pixel_values_dst) - self.cx_cy_array 
+        n_features = pixel_values_src.shape[0]
+        z_src = np.zeros(n_features)
+        z_dst = np.zeros(n_features)
+        for i in range(n_features):
+            z_src[i] = self.get_depth_value_of_feature(pixel_values_src[i])
+            z_dst[i] = self.get_depth_value_of_feature(pixel_values_dst[i], template=True)
+        xy_src = np.transpose(p0 / self._fx * z_src)
+        xy_dst = np.transpose(p0 / self._fy * z_dst)
+        points_src = np.hstack((xy_src, z_src.reshape(-1,1)))
+        points_dst = np.hstack((xy_dst, z_dst.reshape(-1,1))
+
         T0 = compute_transform(p0, p1) #this matrix is a 3x3
 
         return T0

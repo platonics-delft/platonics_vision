@@ -119,12 +119,14 @@ class ActiveLocalizerNode():
         print('transform_new', transform_new)
         print('home pose', home_pose_matrix)
         final_transform =  transform_new @ np.linalg.inv(home_pose_matrix)
+        """
         final_transform[2,0]=0
         final_transform[0,2]=0
         final_transform[2,1]=0
         final_transform[1,2]=0
         final_transform[2,2]=1
         final_transform[2,3]=0
+        """
         final_pose = transformation_2_pose(final_transform)
         return final_pose.pose
 
