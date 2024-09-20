@@ -8,6 +8,7 @@ from cv_bridge import CvBridge
 import numpy as np
 import rospkg
 from panda_ros import Panda
+from panda_ros.pose_transform_functions import transformation_2_pose
 
 class SiftTemplate():
     def __init__(self):
@@ -35,9 +36,10 @@ class SiftTemplate():
             cv2.imshow("cropped", cropped_image)
             cv2.imwrite(f"{self.save_dir}/template.png", cropped_image)
     
-    def record(self, img: Image, depth_img: Image, name='template_test'):
+    def record(self, img: Image, depth_img: Image, name='template_test', panda_link_tf=np.eye(4)):
         self.image = self.bridge.imgmsg_to_cv2(img, desired_encoding="bgr8")
         self.depth_image = self.bridge.imgmsg_to_cv2(depth_img, desired_encoding="passthrough")
+
         self.save_dir = name
         self.params['template_path'] = self.save_dir + "/full_image.png"
         # force overwrite
@@ -46,7 +48,7 @@ class SiftTemplate():
         os.mkdir(self.save_dir)
         depth=None
         cv2.imwrite(f"{self.save_dir}/full_image.png", self.image)
-        cv2.imwrite(f"{self.save_dir}/depth.png", self.depth_image)
+        np.save(f"{self.save_dir}/depth.npy", self.depth_image)
 
         print("Click and drag to select template")
         print("Press 'q' to quit")
@@ -68,6 +70,20 @@ class SiftTemplate():
 
         self.params['position']={'x': float(self.panda.curr_pos[0]), 'y': float(self.panda.curr_pos[1]), 'z': float(self.panda.curr_pos[2])}
         self.params['orientation']={'w': float(self.panda.curr_ori[0]) ,'x': float(self.panda.curr_ori[1]) , 'y': float(self.panda.curr_ori[2]), 'z': float(self.panda.curr_ori[3])}
+        panda_link_tf_pose = transformation_2_pose(panda_link_tf)
+        self.params['panda_link_tf'] = {
+            'position': {
+                'x': float(panda_link_tf_pose.pose.position.x),
+                'y': float(panda_link_tf_pose.pose.position.y),
+                'z': float(panda_link_tf_pose.pose.position.z)
+            },
+            'orientation': {
+                'w': float(panda_link_tf_pose.pose.orientation.w),
+                'x': float(panda_link_tf_pose.pose.orientation.x),
+                'y': float(panda_link_tf_pose.pose.orientation.y),
+                'z': float(panda_link_tf_pose.pose.orientation.z)
+            }
+        }
         with open(f"{self.save_dir}/params.yaml", 'w') as file:
             yaml.dump(self.params, file)
 

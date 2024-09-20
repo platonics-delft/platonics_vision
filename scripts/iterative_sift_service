@@ -4,7 +4,7 @@ from panda_ros.pose_transform_functions import list_2_quaternion, pos_quat_2_pos
 from platonics_vision.srv import IterativeRegistrationLocalizer, IterativeRegistrationLocalizerResponse, IterativeRegistrationLocalizerRequest, SavingPointcloudRequest
 from sensor_msgs.msg import Image
 from panda_ros import Panda
-from panda_ros.pose_transform_functions import orientation_2_quaternion, pose_st_2_transformation, transform_pose, transformation_2_pose
+from panda_ros.pose_transform_functions import orientation_2_quaternion, pose_st_2_transformation, transform_pose, transformation_2_pose, pose_2_transformation
 
 import tf
 from platonics_vision.srv import SiftRegistrationLocalizerRequest, SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse
@@ -64,6 +64,8 @@ class ActiveLocalizerNode():
             self._params = yaml.safe_load(f)
 
         self._panda.go_to_pose_ik(self.home_pose)
+        self._panda.offset_compensator(10)
+        rospy.sleep(2.0)
 
         self._rate.sleep()
         sift_request = SiftRegistrationLocalizerRequest()
@@ -94,9 +96,24 @@ class ActiveLocalizerNode():
             except Exception as e:
                 rospy.logwarn(e)
                 continue
-            self._transformed_pose = self.transform(box_tf, home_pose)
+            if i == 0:
+                self.height_offset = box_tf.pose.position.z
+                z_offset = box_tf.pose.position.z
+                box_tf.pose.position.x = 0
+                box_tf.pose.position.y = 0
+                box_tf.pose.position.z = 0
+                """
+                box_tf.pose.orientation.x = 0
+                box_tf.pose.orientation.y = 0
+                box_tf.pose.orientation.z = 0
+                box_tf.pose.orientation.w = 1
+                """
+            else:
+                box_tf.pose.position.z = 0
+            self._transformed_pose = self.transform_old(box_tf, home_pose)
             self._panda.go_to_pose_ik(self._transformed_pose)
             self._panda.offset_compensator(10)
+            rospy.sleep(2.0)
             rospy.loginfo("Finished go to.")
             """
             pos_error = np.linalg.norm(xy_yaw[:2])
@@ -119,12 +136,14 @@ class ActiveLocalizerNode():
         print('transform_new', transform_new)
         print('home pose', home_pose_matrix)
         final_transform =  transform_new @ np.linalg.inv(home_pose_matrix)
+        """
         final_transform[2,0]=0
         final_transform[0,2]=0
         final_transform[2,1]=0
         final_transform[1,2]=0
         final_transform[2,2]=1
         final_transform[2,3]=0
+        """
         final_pose = transformation_2_pose(final_transform)
         return final_pose.pose
 
@@ -139,8 +158,12 @@ class ActiveLocalizerNode():
                 rospy.logwarn(e)
         transform = np.dot(tf.transformations.translation_matrix(rp_tr), tf.transformations.quaternion_matrix(rp_rt))
         return transform
+
+    def transform(self, box_tf, home_pose):
+        tf = pose_st_2_transformation(box_tf)
+        return transform_pose(home_pose, tf)
     
-    def transform(self, transformation_pose, pose):
+    def transform_old(self, transformation_pose, pose):
         transform_base_2_cam = self.get_transform('panda_link0', 'camera_color_optical_frame')
         
         # if transform box is not in camera frame, remove the base_2_cam transforms
@@ -160,7 +183,7 @@ class ActiveLocalizerNode():
         pose.pose.orientation.x = pose_quat.x
         pose.pose.orientation.y = pose_quat.y
 
-        pose.pose.position.z=self.height  # Maintain same height
+        pose.pose.position.z=self.height +self.height_offset
         return pose
 
 if __name__ == '__main__':
