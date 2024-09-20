@@ -46,9 +46,10 @@ class SiftTemplate():
         if os.path.exists(self.save_dir):
             os.system(f"rm -r {self.save_dir}")
         os.mkdir(self.save_dir)
+        os.mkdir(self.save_dir + "/template")
         depth=None
-        cv2.imwrite(f"{self.save_dir}/full_image.png", self.image)
-        np.save(f"{self.save_dir}/depth.npy", self.depth_image)
+        cv2.imwrite(f"{self.save_dir}/template/full_image.png", self.image)
+        np.save(f"{self.save_dir}/template/depth.npy", self.depth_image)
 
         print("Click and drag to select template")
         print("Press 'q' to quit")
@@ -84,7 +85,7 @@ class SiftTemplate():
                 'z': float(panda_link_tf_pose.pose.orientation.z)
             }
         }
-        with open(f"{self.save_dir}/params.yaml", 'w') as file:
+        with open(f"{self.save_dir}/template/params.yaml", 'w') as file:
             yaml.dump(self.params, file)
 
 
