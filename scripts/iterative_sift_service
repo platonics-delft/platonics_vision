@@ -16,6 +16,7 @@ from queue import Queue
 import rospy
 import rospkg
 import yaml
+import math
 
 class ActiveLocalizerNode():
     def __init__(self) -> None:
@@ -97,7 +98,7 @@ class ActiveLocalizerNode():
                 rospy.logwarn(e)
                 continue
             if i == 0:
-                self.height_offset = box_tf.pose.position.z
+                self.height_offset = box_tf.pose.position.z * 0
                 z_offset = box_tf.pose.position.z
                 box_tf.pose.position.x = 0
                 box_tf.pose.position.y = 0
@@ -110,6 +111,8 @@ class ActiveLocalizerNode():
                 """
             else:
                 box_tf.pose.position.z = 0
+
+            
             self._transformed_pose = self.transform_old(box_tf, home_pose)
             self._panda.go_to_pose_ik(self._transformed_pose)
             self._panda.offset_compensator(10)
@@ -136,6 +139,7 @@ class ActiveLocalizerNode():
         print('transform_new', transform_new)
         print('home pose', home_pose_matrix)
         final_transform =  transform_new @ np.linalg.inv(home_pose_matrix)
+        final_transform_projected = self.transform_2d_plane(final_transform, home_pose_matrix)
         """
         final_transform[2,0]=0
         final_transform[0,2]=0
@@ -168,23 +172,51 @@ class ActiveLocalizerNode():
         
         # if transform box is not in camera frame, remove the base_2_cam transforms
         transform_box = pose_st_2_transformation(transformation_pose)
+
+
+
         transform = transform_base_2_cam @ transform_box @ np.linalg.inv(transform_base_2_cam)
 
-        print("transforming", transform)
-        pose = transform_pose(pose, transform)
-        pose_quat = orientation_2_quaternion(pose.pose.orientation)
+        projected_transform = self.transform_2d_plane(transform, pose_st_2_transformation(pose))
+        print("transforming", projected_transform)
+        pose = transform_pose(pose, projected_transform)
+        # pose_quat = orientation_2_quaternion(pose.pose.orientation)
 
         # Maintain orientation and only apply 'yaw' (rotation around EE z-axis)
-        pose.pose.orientation.z = 0
-        pose.pose.orientation.w = 0
-        new_magnitude = np.sqrt(pose_quat.x * pose_quat.x + pose_quat.y * pose_quat.y)
-        pose_quat.x = pose_quat.x / new_magnitude
-        pose_quat.y = pose_quat.y / new_magnitude
-        pose.pose.orientation.x = pose_quat.x
-        pose.pose.orientation.y = pose_quat.y
+        # pose.pose.orientation.z = 0
+        # pose.pose.orientation.w = 0
+        # new_magnitude = np.sqrt(pose_quat.x * pose_quat.x + pose_quat.y * pose_quat.y)
+        # pose_quat.x = pose_quat.x / new_magnitude
+        # pose_quat.y = pose_quat.y / new_magnitude
+        # pose.pose.orientation.x = pose_quat.x
+        # pose.pose.orientation.y = pose_quat.y
 
         pose.pose.position.z=self.height +self.height_offset
         return pose
+    
+    def transform_2d_plane(self, T_sift, T_start):
+        T_goal = np.dot(T_sift, T_start)
+        R_goal_2d = T_goal[0:2, 0:2]
+        t_goal_2d = T_goal[0:2, 3]
+        R_start_2d = T_start[0:2, 0:2]
+        t_start_2d = T_start[0:2, 3]
+    
+        R = T_sift[0:3, 0:3]
+        # get the rotation matrix
+        R_euler = R / np.linalg.norm(R)
+        # get the rotation angle
+        angle = math.atan2(R_euler[1, 0], R_euler[0, 0])
+    
+        R_diff_2d = np.dot(R_goal_2d, R_start_2d.T)
+        R_diff_2d = np.array([
+            [math.cos(angle), -math.sin(angle)],
+            [math.sin(angle), math.cos(angle)]
+        ])
+        t_diff = t_goal_2d - np.dot(R_diff_2d, t_start_2d)
+        T_end = np.eye(4)
+        T_end[0:2, 0:2] = R_diff_2d
+        T_end[0:2, 3] = t_diff
+        return T_end
 
 if __name__ == '__main__':
     active_localizer_node = ActiveLocalizerNode()
