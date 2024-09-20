@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+import rospy
+from sensor_msgs.msg import Image
+import cv_bridge
+import cv2
+
+
+class DepthFiltering:
+    def __init__(self):
+        rospy.init_node("depth_filtering")
+        self._rate = rospy.Rate(30)
+        self._alpha = 0.95
+        self._filtered_depth_image = None
+        self._filtered_depth_array = None
+        self.establish_ros_connections()
+        self._bridge = cv_bridge.CvBridge()
+
+    def establish_ros_connections(self):
+        rospy.Subscriber("/camera/depth/image_rect_raw", Image, self.depth_callback)
+        self.pub = rospy.Publisher("/camera/depth/image_filtered", Image, queue_size=1)
+
+    def depth_callback(self, image: Image):
+        self._depth_image = image
+        self._depth_array = self._bridge.imgmsg_to_cv2(image)
+        if not self._filtered_depth_image:
+            self._filtered_depth_image = self._depth_image
+            self._filtered_depth_array = self._depth_array
+        self.update()
+        self._filtered_depth_image = self._bridge.cv2_to_imgmsg(self._filtered_depth_array.astype("uint16"), encoding="16UC1")
+        
+
+        self.pub.publish(self._filtered_depth_image)
+
+    def update(self) -> None:
+        #self._filtered_depth_array = self._depth_array
+        self._filtered_depth_array = self._alpha * self._filtered_depth_array + (1 - self._alpha) * self._depth_array
+
+    def run(self):
+        while not rospy.is_shutdown():
+            self._rate.sleep()
+
+if __name__ == "__main__":
+    node = DepthFiltering()
+    try:
+        node.run()
+    except rospy.ROSInterruptException:
+        pass
+
+
