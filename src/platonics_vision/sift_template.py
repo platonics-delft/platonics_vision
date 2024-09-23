@@ -1,5 +1,4 @@
 #!/bin/python3
-import time
 import cv2
 import rospy
 import os
@@ -63,7 +62,6 @@ class SiftTemplate():
             os.system(f"rm -r {self.save_dir}")
         os.mkdir(self.save_dir)
         os.mkdir(self.save_dir + "/template")
-        depth=None
         cv2.imwrite(f"{self.save_dir}/template/full_image.png", self.image)
         np.save(f"{self.save_dir}/template/depth.npy", self.depth_image)
 

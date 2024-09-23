@@ -25,7 +25,7 @@ class LocalizationService():
         self._rate = rospy.Rate(5)
 
         rospack = rospkg.RosPack()
-        self._templates_folder = rospack.get_path("platonics_vision") + "/data/"
+        self._templates_folder = rospack.get_path("platonics_dataset") + "/trajectories/"
 
         self._localizer = Localizer()
         self.bridge = CvBridge()
@@ -105,8 +105,8 @@ class LocalizationService():
 
     def compute_localization_in_m(self, template_folder_name: str):
         cv_image = self.bridge.imgmsg_to_cv2(self._img, "bgr8")
-        template_file = self._templates_folder + template_folder_name + "/full_image.png"
-        params_file = self._templates_folder + template_folder_name + "/params.yaml"
+        template_file = self._templates_folder + template_folder_name + "/template/full_image.png"
+        params_file = self._templates_folder + template_folder_name + "/template/params.yaml"
         params = yaml.load(open(params_file, 'r'), Loader=yaml.FullLoader)
         #self._localizer.set_cropping(params['crop'])
         self._localizer.set_box_depth(float(params['depth']) * 0.001)
