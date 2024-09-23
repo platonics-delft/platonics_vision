@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+from geometry_msgs.msg import PoseStamped
+import rospy
+from sensor_msgs.msg import Image
+from platonics_vision.localizer_sift import Localizer
+from platonics_vision.sift_template import SiftTemplate
+from sensor_msgs.msg import CameraInfo
+import numpy as np
+
+from platonics_vision.srv import SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse, MultiSiftRegistrationLocalizer, MultiSiftRegistrationLocalizerResponse
+from platonics_vision.srv import SavingTemplate, SavingTemplateRequest, SavingTemplateResponse
+import rospkg
+import tf2_ros
+import tf
+import yaml
+import sys
+
+def handle_save_template_request(templates_folder, img, depth_img, req: SavingTemplateRequest, panda_link_tf):
+    sift_template = SiftTemplate()
+    name_template = templates_folder + req.template_name.data
+    print("Recording template name: ", name_template)
+    sift_template.record(img=img, depth_img=depth_img, name=name_template, panda_link_tf=panda_link_tf)
+    response = SavingTemplateResponse()
+    response.success.data = True
+    return response
+
+def img_callback(data):
+    global img
+    img = data
+
+def depth_img_callback(data):
+    global depth_img
+    depth_img = data
+
+def get_transformation_matrix(source_frame='panda_link0', target_frame='camera_color_optical_frame'):
+    tf_buffer = tf2_ros.Buffer()
+    tf_listener = tf2_ros.TransformListener(tf_buffer)
+
+    # Get the transformation matrix
+    try:
+        transform = tf_buffer.lookup_transform(source_frame, target_frame, rospy.Time(0), rospy.Duration(0.2))
+    except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+        rospy.logerr("Transform not available")
+        return None
+    # Convert transform to a 4x4 matrix
+    trans = transform.transform.translation
+    rot = transform.transform.rotation
+    return np.array([
+        [1-2*(rot.y**2 + rot.z**2), 2*(rot.x*rot.y - rot.z*rot.w), 2*(rot.x*rot.z + rot.y*rot.w), trans.x],
+        [2*(rot.x*rot.y + rot.z*rot.w), 1-2*(rot.x**2 + rot.z**2), 2*(rot.y*rot.z - rot.x*rot.w), trans.y],
+        [2*(rot.x*rot.z - rot.y*rot.w), 2*(rot.y*rot.z + rot.x*rot.w), 1-2*(rot.x**2 + rot.y**2), trans.z],
+        [0, 0, 0, 1]
+    ])
+
+
+
+def main():
+    rospy.init_node("recording_server")
+    rospy.Subscriber("/camera/color/image_raw", Image, img_callback)
+    rospy.Subscriber("/camera/depth/image_filtered", Image, depth_img_callback)
+    rospack = rospkg.RosPack()
+    templates_folder = rospack.get_path("platonics_dataset") + "/trajectories/"
+    request = SavingTemplateRequest()
+    request.template_name.data = sys.argv[1]
+    panda_link_tf = get_transformation_matrix()
+    print(panda_link_tf)
+
+    handle_save_template_request(templates_folder, img, depth_img, request, panda_link_tf)
+
+
+if __name__ == "__main__":
+    main()

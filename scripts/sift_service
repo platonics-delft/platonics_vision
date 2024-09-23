@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 from geometry_msgs.msg import PoseStamped
 import rospy
 from sensor_msgs.msg import Image
@@ -7,7 +8,7 @@ from platonics_vision.sift_template import SiftTemplate
 from sensor_msgs.msg import CameraInfo
 import numpy as np
 
-from platonics_vision.srv import SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse
+from platonics_vision.srv import SiftRegistrationLocalizer, SiftRegistrationLocalizerResponse, MultiSiftRegistrationLocalizer, MultiSiftRegistrationLocalizerResponse
 from platonics_vision.srv import SavingTemplate, SavingTemplateRequest, SavingTemplateResponse
 import rospkg
 import tf2_ros
@@ -52,9 +53,15 @@ class LocalizationService():
         ])
 
     def handle_save_template_request(self, req: SavingTemplateRequest):
+
+        bash_script = f'rosrun platonics_vision record_template {req.template_name.data}'
+        print(bash_script)
+        os.system(bash_script)
+        """
         name_template = self._templates_folder + req.template_name.data
         print("Recording template name: ", name_template)
         self._sift_template.record(img=self._img, depth_img=self._depth_img, name=name_template, panda_link_tf=self.get_transformation_matrix())
+        """
         response = SavingTemplateResponse()
         response.success.data = True
         return response
@@ -62,6 +69,7 @@ class LocalizationService():
     def establish_ros_connections(self):
         self.image_publisher = rospy.Publisher("/SIFT_localization", Image, queue_size=10)
         self._service = rospy.Service('sift_localization', SiftRegistrationLocalizer, self.handle_request)
+        self._multi_service = rospy.Service('multi_sift_localization', MultiSiftRegistrationLocalizer, self.handle_multi_request)
         self._save_template_service = rospy.Service('saving_sift_template', SavingTemplate, self.handle_save_template_request)
         rospy.Subscriber("/camera/color/camera_info", CameraInfo, self.camera_info_callback)
         self.image_sub = rospy.Subscriber('/camera/color/image_raw', Image, self.image_callback)
@@ -81,16 +89,30 @@ class LocalizationService():
         self._fy = msg.K[4]
         self._localizer.set_intrinsics(self._fx, self._fy, self.cx_cy_array[0], self.cx_cy_array[1])
 
+    def handle_multi_request(self, req: MultiSiftRegistrationLocalizer):
+        response = MultiSiftRegistrationLocalizerResponse()
+        yaws = []
+        for template_folder_name in req.template_folder_names:
+            tf_matrix = self.compute_localization_in_m(template_folder_name)
+            yaw = tf.transformations.euler_from_matrix(tf_matrix[0:4, 0:4])[2]
+            rospy.loginfo(f"Angle for {template_folder_name} is {yaw}")
+            yaws.append(abs(yaw))
+        index = np.argmin(np.array(yaws))
+        response.closest_template_name = req.template_folder_names[index]
+        return response
+
+
 
     def compute_localization_in_m(self, template_folder_name: str):
         cv_image = self.bridge.imgmsg_to_cv2(self._img, "bgr8")
         template_file = self._templates_folder + template_folder_name + "/full_image.png"
         params_file = self._templates_folder + template_folder_name + "/params.yaml"
         params = yaml.load(open(params_file, 'r'), Loader=yaml.FullLoader)
-        self._localizer.set_cropping(params['crop'])
+        #self._localizer.set_cropping(params['crop'])
         self._localizer.set_box_depth(float(params['depth']) * 0.001)
-        self._localizer.set_template(template_file)
-        self._localizer.set_depth_template(self._templates_folder + template_folder_name + "/depth.npy")
+        polygon_points = params['polygon']
+        self._localizer.set_template_from_polygon_points(template_file, polygon_points)
+        self._localizer.set_depth_template(self._templates_folder + template_folder_name + "/template/depth.npy")
         self._localizer.set_image(cv_image)
         self._localizer.set_template_tf(params['panda_link_tf'])
         depth_image = self.bridge.imgmsg_to_cv2(self._depth_img, desired_encoding="passthrough")
