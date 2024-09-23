@@ -42,6 +42,13 @@ class Localizer(object):
             cropped_h[0],
         ])
 
+    def set_template_from_polygon_points(self, template, polygon_points) -> None:
+        self._full_template = cv2.imread(template, 0)
+        # Create mask from polygon points
+        mask = np.zeros(self._full_template.shape[:2], dtype=np.uint8)
+        cv2.fillPoly(mask, [np.array(polygon_points)], 255)
+        self._template = cv2.bitwise_and(self._full_template, self._full_template, mask=mask)
+
     def set_intrinsics(self, fx, fy, cx, cy) -> None:
         self._fx = fx
         self._fy = fy
@@ -87,8 +94,10 @@ class Localizer(object):
                 good.append(m)
 
         # translate keypoints back to full source template
+        """
         for k in kp1:
             k.pt = (k.pt[0] + self.delta_translation[0], k.pt[1] + self.delta_translation[1])
+        """
 
 
         if len(good) > MIN_MATCH_COUNT:

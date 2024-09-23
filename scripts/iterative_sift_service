@@ -24,7 +24,7 @@ class ActiveLocalizerNode():
         self._rate = rospy.Rate(1)
         self._panda = Panda()
         rospack = rospkg.RosPack()
-        self._templates_folder = rospack.get_path("platonics_vision") + "/data/"
+        self._templates_folder = rospack.get_path("platonics_dataset") + "/trajectories/"
 
         rospy.wait_for_service('sift_localization')
         self.compute_box_tf = rospy.ServiceProxy('sift_localization', SiftRegistrationLocalizer)
@@ -60,7 +60,7 @@ class ActiveLocalizerNode():
 
     def handle_request(self, req: IterativeRegistrationLocalizer):
 
-        parameter_file = self._templates_folder + req.template_file_name.data + '/params.yaml'
+        parameter_file = self._templates_folder + req.template_file_name.data + '/template/params.yaml'
         with open(parameter_file) as f:
             self._params = yaml.safe_load(f)
 

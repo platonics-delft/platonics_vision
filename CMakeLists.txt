@@ -63,6 +63,7 @@ add_service_files(
   ComputeLocalization.srv
   GlobalRegistrationLocalizer.srv
   SiftRegistrationLocalizer.srv
+  MultiSiftRegistrationLocalizer.srv
   IterativeRegistrationLocalizer.srv
   SavingPointcloud.srv
   SavingTemplate.srv
