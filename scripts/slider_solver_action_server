@@ -35,8 +35,10 @@ class SliderSolverServer():
         task_stage = goal.task_stage
         result.success = False
         self._slider_solver.execute_start(task_stage)
+        success_series = 0
         while not(self._slider_solver.end):
-            success = self._slider_solver.execute_step(task_stage)
+            success_flag = self._slider_solver.execute_step(task_stage)
+            success_series += success_flag
             if self._slider_solver_action_server.is_preempt_requested():
                 result.success = False
                 self._slider_solver_action_server.set_preempted(result)
@@ -44,9 +46,16 @@ class SliderSolverServer():
             if self._slider_solver.triangles_distance is not None:
                 feedback.triangles_distance = self._slider_solver.triangles_distance
                 self._slider_solver_action_server.publish_feedback(feedback)
-            if success:
+            if success_flag == 0:
+                success_series = 0
                 result.success = True
                 self._slider_solver_action_server.set_succeeded(result)
+                break
+            elif success_flag == 1:
+                success_series = 0
+            elif success_series < -20:
+                result.success = False
+                self._slider_solver_action_server.set_aborted(result)
                 break
         self._exposure_client.update_configuration(self._running_params)
 

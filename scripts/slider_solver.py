@@ -55,7 +55,7 @@ class SliderSolver():
         self._triangle_detector.load_template_images(self.image_dir_path, object_ids, debug=True)
         self.end = False
 
-    def execute_step(self, task_stage) -> bool:
+    def execute_step(self, task_stage) -> int:
         ### Safety check
         if self.robot.change_in_safety_check:
             if self.robot.safety_check:
@@ -83,7 +83,9 @@ class SliderSolver():
             self.robot.goal_pub.publish(new_goal_in_world_frame) 
 
             if np.abs(self.triangles_distance) < self.success_threshold:
-                return True
+                return 0
+        else:
+            return -1
 
         self.rate.sleep()
-        return False
+        return 1
