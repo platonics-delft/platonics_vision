@@ -15,7 +15,8 @@ class SliderSolver():
     def __init__(self):
         self.control_rate = 30
         self.rate=rospy.Rate(self.control_rate)
-        self.move_increment = 0.0003
+        self.move_increment = 0.001
+        self.triangles_distance = None
 
         self.robot = Panda()
         self._triangle_detector = TriangleDetector()
@@ -48,10 +49,7 @@ class SliderSolver():
         self.robot.set_K.update_configuration({"joint_default_damping": 0.00})
 
         self.robot.change_in_safety_check = False
-        if task_stage == 1:
-            object_ids = ['red', 'yellow']
-        elif task_stage == 2:
-            object_ids = ['red', 'green']
+        object_ids = ['red', 'green', 'yellow']
         self._triangle_detector.load_template_images(self.image_dir_path, object_ids, debug=True)
         self.end = False
 
@@ -65,8 +63,25 @@ class SliderSolver():
                 self.robot.set_stiffness(self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, 0)
                 return True
             
-        self.triangles_distance = self._triangle_detector.detect_triangles(debug=True)
-        if self.triangles_distance is not None:
+        self.triangles_distances, errorflag = self._triangle_detector.detect_triangles(debug=True)
+        rospy.loginfo(f"Distance: {self.triangles_distances}")
+        if errorflag == -1:
+            self.rate.sleep()
+            return -1
+        else:
+            if task_stage == 1:
+                self.triangles_distance = self.triangles_distances['red_yellow']
+                if abs(self.triangles_distance) < self.success_threshold:
+                    return 0
+            elif task_stage == 2:
+                if abs(self.triangles_distances['green_yellow']) < 5:
+                    return -1
+                self.triangles_distance = self.triangles_distances['red_green']
+                if abs(self.triangles_distance) < self.success_threshold:
+                    return 0
+            else:
+                rospy.logerr("Invalid task stage")
+                return -1
             direction = np.sign(self.triangles_distance)
             if self.goal_pose is not None:
                 curr_goal = self.robot.goal_pose
@@ -82,10 +97,6 @@ class SliderSolver():
             new_goal_in_world_frame.header.frame_id = "panda_link0" 
             self.robot.goal_pub.publish(new_goal_in_world_frame) 
 
-            if np.abs(self.triangles_distance) < self.success_threshold:
-                return 0
-        else:
-            return -1
 
         self.rate.sleep()
         return 1

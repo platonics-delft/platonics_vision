@@ -24,7 +24,7 @@ class SliderSolverServer():
         self._slider_solver_action_server.start()
         rospy.Service("save_triangles_templates_service", SavingTemplate, self.handle_save_template_request)
         self._exposure_client = dynamic_reconfigure.client.Client("/camera/stereo_module", timeout=10)
-        self._detection_params = {'exposure': 9000, 'enable_auto_exposure': False}
+        self._detection_params = {'exposure': 7000, 'enable_auto_exposure': False}
         self._running_params = {'enable_auto_exposure': True}
 
 

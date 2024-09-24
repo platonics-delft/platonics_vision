@@ -107,6 +107,7 @@ class TriangleDetector():
         # https://github.com/eurobin-wp1/tum-tb-perception
         
         # Detect templates in input image:
+        errorflag = 0
         vis_image_array = self.curr_image.copy()
         template_positions_dict = {}
         detection_scores_dict = {}
@@ -173,62 +174,36 @@ class TriangleDetector():
             print(f'[DEBUG] Detection scores: {detection_scores_dict}')
 
         # Estimate distance between positions in image space:
-        estimated_pixel_distance = None
-        if self.initial_point_id in template_positions_dict.keys() and \
-                detection_scores_dict[self.initial_point_id] >= self.detection_score_threshold:
-            if self.goal_point_id in template_positions_dict.keys() and \
-                    detection_scores_dict[self.goal_point_id] >= self.detection_score_threshold:
-                point_1= template_positions_dict[self.initial_point_id]
-                point_2 = template_positions_dict[self.goal_point_id]
-                x_distance = point_2[0] - point_1[0]
-                estimated_pixel_distance = x_distance
-
-                # Draw arrow indicating direction of estimated motion:
-                arrow_y_position = int((point_1[1] + point_2[1]) / 2.)
-                text_label_position = (int((point_1[0] + point_2[0]) / 2.) - 15, 
-                                        arrow_y_position - 45)
-                cv2.arrowedLine(vis_image_array,
-                                (point_1[0], arrow_y_position),
-                                (point_2[0], arrow_y_position),
-                                color=(0, 0, 0), thickness=2, tipLength=0.2)
-
-                vis_image_array = cv2.putText(
-                        vis_image_array,
-                        'Dist.: ' + str(estimated_pixel_distance),
-                        text_label_position,
-                        self.cv2_text_label_font_, self.cv2_text_label_font_scale_ * 2,
-                        (0., 0., 0.), 1
-                )
+        estimated_pixel_distance = {'red_green': 0, 'red_yellow': 0, 'green_yellow': 0}
+        positions = {}
+        for color in ['red', 'yellow', 'green']:
+            if color not in template_positions_dict.keys():
+                rospy.logerr(f'[slider_task_solver] Could not find ' + \
+                                f'position for color {color}!')
+                positions[color] = None
             else:
-                rospy.logwarn(f'[slider_task_solver] Goal point ' + \
-                                f'template ({self.goal_point_id}) was not ' + \
-                                f'reliably detected in image!')
-        else:
-            rospy.logwarn(f'[slider_task_solver] Initial point ' + \
-                            f'template ({self.initial_point_id}) was not ' + \
-                            f'reliably detected in image!')
+                positions[color] = template_positions_dict[color]
+        for distance in list(estimated_pixel_distance.keys()):
+            color1, color2 = distance.split('_')
+            if positions[color1] is not None and positions[color2] is not None:
+                estimated_pixel_distance[distance] = positions[color2][0] - positions[color1][0]
+            else:
+                rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
+                                f'distance between {color1} and {color2}!')
+                errorflag = -1
+                estimated_pixel_distance[distance] = None
+
+
 
         if estimated_pixel_distance is None:
             rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
                             f'slider motion distance!')
-        else:
-            # estimated_slider_distance = estimated_pixel_distance
 
-            slider_solution_msg = Float32()
-            slider_solution_msg.data = estimated_pixel_distance 
-            self.slider_distance_publisher.publish(slider_solution_msg)
+        if publish_visual_output:
+            debug_image_msg = self.bridge.cv2_to_imgmsg(vis_image_array, 
+                                                    encoding="bgr8")
 
-            if debug:
-                rospy.loginfo(f'[slider_task_solver] Estimated distance ' + \
-                                f'between templates {self.initial_point_id} and ' + \
-                                f'{self.goal_point_id} in image space: ' + \
-                                f'{estimated_pixel_distance} ')
+            debug_image_msg.header.stamp = rospy.Time.now()
+            self.slider_solver_image_publisher.publish(debug_image_msg)
 
-            if publish_visual_output:
-                debug_image_msg = self.bridge.cv2_to_imgmsg(vis_image_array, 
-                                                        encoding="bgr8")
-
-                debug_image_msg.header.stamp = rospy.Time.now()
-                self.slider_solver_image_publisher.publish(debug_image_msg)
-
-        return estimated_pixel_distance
+        return estimated_pixel_distance, errorflag

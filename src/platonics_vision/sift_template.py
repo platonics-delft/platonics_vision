@@ -1,6 +1,7 @@
 #!/bin/python3
 import cv2
 import rospy
+import time
 import os
 import yaml
 from sensor_msgs.msg import Image

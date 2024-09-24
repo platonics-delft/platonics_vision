@@ -54,14 +54,12 @@ class LocalizationService():
 
     def handle_save_template_request(self, req: SavingTemplateRequest):
 
-        bash_script = f'rosrun platonics_vision record_template {req.template_name.data}'
-        print(bash_script)
-        os.system(bash_script)
-        """
+        #bash_script = f'rosrun platonics_vision record_template {req.template_name.data}'
+        #print(bash_script)
+        #os.system(bash_script)
         name_template = self._templates_folder + req.template_name.data
         print("Recording template name: ", name_template)
         self._sift_template.record(img=self._img, depth_img=self._depth_img, name=name_template, panda_link_tf=self.get_transformation_matrix())
-        """
         response = SavingTemplateResponse()
         response.success.data = True
         return response
