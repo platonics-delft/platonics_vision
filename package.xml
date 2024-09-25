@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>platonics_vision</name>
-  <version>0.0.0</version>
+  <version>0.0.1</version>
   <description>The platonics_vision package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
@@ -48,6 +48,7 @@
   <!--   <test_depend>gtest</test_depend> -->
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
+  <build_depend>panda_ros</build_depend>
   <buildtool_depend>catkin</buildtool_depend>
 
 

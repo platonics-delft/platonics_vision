@@ -2,7 +2,6 @@ import numpy as np
 import cv2
 import logging
 from geometry_msgs.msg import Pose
-import matplotlib.pyplot as plt
 
 from panda_ros.pose_transform_functions import pose_2_transformation
 MIN_MATCH_COUNT = 2

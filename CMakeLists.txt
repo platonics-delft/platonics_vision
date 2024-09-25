@@ -15,6 +15,14 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   actionlib_msgs
   actionlib
+  panda_ros
+  platonics_dataset
+  realsense2_camera
+  realsense2_description
+  rqt_reconfigure
+  tf
+  tf2_ros
+  cv_bridge
 )
 
 ## System dependencies are found with CMake's conventions
