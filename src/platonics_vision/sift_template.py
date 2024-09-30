@@ -79,9 +79,11 @@ class SiftTemplate():
         cv2.imshow(self._window_name , self.image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+        """
         cv2.namedWindow("image")
         cv2.setMouseCallback("image", self.crop_image)
         cv2.imshow("image", self.image)
+        """
 
         # Loop until user presses 'q'
         """
