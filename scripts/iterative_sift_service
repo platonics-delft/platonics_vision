@@ -23,6 +23,7 @@ class ActiveLocalizerNode():
         rospy.init_node("iterative_sift_localizer")
         self._rate = rospy.Rate(1)
         self._panda = Panda()
+        self.height_offset = 0
         rospack = rospkg.RosPack()
         self._templates_folder = rospack.get_path("platonics_dataset") + "/trajectories/"
 
@@ -97,20 +98,7 @@ class ActiveLocalizerNode():
             except Exception as e:
                 rospy.logwarn(e)
                 continue
-            if i == 0:
-                self.height_offset = box_tf.pose.position.z * 0
-                z_offset = box_tf.pose.position.z
-                box_tf.pose.position.x = 0
-                box_tf.pose.position.y = 0
-                box_tf.pose.position.z = 0
-                """
-                box_tf.pose.orientation.x = 0
-                box_tf.pose.orientation.y = 0
-                box_tf.pose.orientation.z = 0
-                box_tf.pose.orientation.w = 1
-                """
-            else:
-                box_tf.pose.position.z = 0
+            box_tf.pose.position.z = 0
 
             
             self._transformed_pose = self.transform_old(box_tf, home_pose)
