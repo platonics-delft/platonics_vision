@@ -10,6 +10,7 @@ from panda_ros import Panda
 from panda_ros.pose_transform_functions import transform_pose, pos_quat_2_pose_st, pose_st_2_transformation
 from copy import deepcopy 
 from triangle_detector import TriangleDetector
+import copy
 
 class SliderSolver():
     def __init__(self):
@@ -49,7 +50,7 @@ class SliderSolver():
         self.robot.set_K.update_configuration({"joint_default_damping": 0.00})
 
         self.robot.change_in_safety_check = False
-        object_ids = ['red', 'green', 'yellow']
+        object_ids = ['screen','red', 'green', 'yellow']
         self._triangle_detector.load_template_images(self.image_dir_path, object_ids, debug=True)
         self.end = False
 
@@ -63,20 +64,51 @@ class SliderSolver():
                 self.robot.set_stiffness(self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_pos_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, self.robot.K_ori_safe, 0)
                 return True
             
-        self.triangles_distances, errorflag = self._triangle_detector.detect_triangles(debug=True)
-        rospy.loginfo(f"Distance: {self.triangles_distances}")
+        self.triangles_positions, errorflag = self._triangle_detector.detect_triangles(debug=True)
+        # rospy.loginfo(f"Positions: {self.triangles_positions}")
         if errorflag == -1:
             self.rate.sleep()
             return -1
         else:
             if task_stage == 1:
-                self.triangles_distance = self.triangles_distances['red_yellow']
+                if len(self.triangles_positions['yellow']) == 0 or len(self.triangles_positions['red']) == 0:
+                    return -1 
+                best_centroid_yellow = self.triangles_positions['yellow'][0]
+                best_centroid_red = self.triangles_positions['red'][0]
+                self.triangles_distance = best_centroid_yellow[0] - best_centroid_red[0]
                 if abs(self.triangles_distance) < self.success_threshold:
                     return 0
             elif task_stage == 2:
-                if abs(self.triangles_distances['green_yellow']) < 5:
+                best_centroid_yellow = None
+                best_centroid_green = None
+                if len(self.triangles_positions['red']) == 0 or len(self.triangles_positions['green']) == 0:
                     return -1
-                self.triangles_distance = self.triangles_distances['red_green']
+                for match_centroid_yellow in self.triangles_positions['yellow']:
+                    distance_previous = np.linalg.norm(np.array(match_centroid_yellow) - np.array(self.previous_best_centroid_yellow))
+                    if distance_previous >= 10: 
+                        continue
+                    else:
+                        best_centroid_yellow = match_centroid_yellow
+                        break
+                if best_centroid_yellow is None:
+                    rospy.logerr(f"Current yellow distance of {distance_previous} to previous position is too large")
+                    return -1
+                
+                for match_centroid_green in self.triangles_positions['green']:
+                    distance_green_yellow = np.linalg.norm(np.array(match_centroid_green) - np.array(best_centroid_yellow))
+                    if distance_green_yellow <= 5:
+                        continue
+                    else:
+                        best_centroid_green = match_centroid_green
+                        break
+                if best_centroid_green is None:
+                    rospy.logerr("No green detection far away from yellow")
+                    return -1
+                
+                best_centroid_red = self.triangles_positions['red'][0]
+                self.triangles_distance = best_centroid_green[0] - best_centroid_red[0]
+                # if abs(self.triangles_distance['green_yellow']) < 5:
+                #     return 
                 if abs(self.triangles_distance) < self.success_threshold:
                     return 0
             else:
@@ -96,7 +128,8 @@ class SliderSolver():
             new_goal_in_world_frame.header.stamp = rospy.Time.now()
             new_goal_in_world_frame.header.frame_id = "panda_link0" 
             self.robot.goal_pub.publish(new_goal_in_world_frame) 
-
+        if best_centroid_yellow is not None:
+            self.previous_best_centroid_yellow = best_centroid_yellow
 
         self.rate.sleep()
         return 1
