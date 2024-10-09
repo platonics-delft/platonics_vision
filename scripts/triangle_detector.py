@@ -16,11 +16,11 @@ from std_msgs.msg import Float32
 
 class TriangleDetector():
     def __init__(self):
-        self.detection_score_threshold = 0.8
+        self.detection_score_threshold = 0.7
         self.cv2_text_label_font_ = cv2.FONT_HERSHEY_SIMPLEX
         self.cv2_text_label_font_scale_ = 0.35
         self.template_matching_method = cv2.TM_CCOEFF_NORMED
-        self.text_label_colors_ = dict(zip(['red', 'yellow', 'green', 'lcd'], 
+        self.text_label_colors_ = dict(zip(['red', 'yellow', 'green', 'screen'], 
                                     [(0, 0, 255), (255, 255, 255), 
                                     (0, 255, 0), (255, 0, 0)]))
 
@@ -109,8 +109,8 @@ class TriangleDetector():
         # Detect templates in input image:
         errorflag = 0
         vis_image_array = self.curr_image.copy()
-        template_positions_dict = {}
-        detection_scores_dict = {}
+        template_positions_dict = {template_id: [] for template_id in self.template_images_dict.keys()}
+        # detection_scores_dict = {template_id: [] for template_id in self.template_images_dict.keys()}
 
         for template_id, temp_image_array_list in self.template_images_dict.items():
             for temp_image_array in temp_image_array_list:
@@ -118,86 +118,113 @@ class TriangleDetector():
                 # Source: https://docs.opencv.org/3.4/d4/dc6/tutorial_py_template_matching.html
                 res = cv2.matchTemplate(self.curr_image, temp_image_array, 
                                         self.template_matching_method)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                locs = np.where(res >= self.detection_score_threshold)
 
                 if debug:
                     print(f'\n[DEBUG] Checking for template: {template_id}')
-                    print(f'[DEBUG] Current score: {max_val}')
+                    # print(f'[DEBUG] Current score: {max_val}')
 
-                if max_val < self.detection_score_threshold:
+                if len(locs[0]) == 0:
                     if debug:
                         print(f'[DEBUG] Could not find a detection with a' + \
                                 f' score that is higher than threshold ' + \
                                 f' {self.detection_score_threshold}.')
                         print(f'[DEBUG] Trying another template source...')
                 else:
-                    if debug:
-                        print(f'[DEBUG] Suitable detection found!')
-                    detection_scores_dict[template_id] = max_val
+                    # if debug:
+                        # print(f'[DEBUG] Suitable detection found!', locs)
+                    # detection_scores_dict[template_id] = max_val
 
                     w, h = (temp_image_array.shape[1], temp_image_array.shape[0])
-                    top_left = max_loc
-                    bottom_right = (top_left[0] + w, top_left[1] + h)
-                    centroid = (int(top_left[0] + (w / 2.)), 
-                                int(top_left[1] + (h / 2.)))
-                    template_positions_dict[template_id] = centroid
 
-                    if publish_visual_output:
-                        # Annotate image with BB and centroid point:
-                        cv2.rectangle(vis_image_array, top_left, bottom_right,
-                                        color=self.text_label_colors_[template_id], 
-                                        thickness=2)
-                        cv2.circle(vis_image_array, centroid, 1, 
-                                    color=(0., 0., 0.), thickness=1)
+                    # Initialize list to store final matches
+                    final_matches = []
 
-                        # Annotate image with faded text labels:
-                        overlay = np.copy(vis_image_array)
-                        overlay = cv2.rectangle(overlay,
-                                                (top_left[0], top_left[1] - 15),
-                                                (top_left[0] + w, top_left[1]),
-                                                self.text_label_colors_[template_id], -1)
-                        overlay = cv2.putText(overlay, template_id,
-                                                (top_left[0], top_left[1] - 5),
-                                                self.cv2_text_label_font_, 
-                                                self.cv2_text_label_font_scale_,
-                                                (0., 0., 0.), 1)
-                        alpha = 0.5
-                        cv2.addWeighted(overlay, alpha, vis_image_array,
-                                        1 - alpha, 0, vis_image_array)
+                    # Non-maximum suppression
+                    for pt in zip(*locs[::-1]):  # Loop over (x, y) coordinates
+                        # Check if the point is too close to an already detected match
+                        too_close = False
+                        for match in final_matches:
+                            if (abs(pt[0] - match[0]) < w) and (abs(pt[1] - match[1]) < h):
+                                too_close = True
+                                break
+                        # If not too close, add this match
+                        if not too_close:
+                            final_matches.append(pt)
+
+                    for match in final_matches:
+                        top_left = match
+                        bottom_right = (top_left[0] + w, top_left[1] + h)
+                        centroid = (int(top_left[0] + (w / 2.)), 
+                                    int(top_left[1] + (h / 2.)))
+                        if publish_visual_output:
+                            # Annotate image with BB and centroid point:
+                            cv2.rectangle(vis_image_array, top_left, bottom_right,
+                                            color=self.text_label_colors_[template_id], 
+                                            thickness=2)
+                            cv2.circle(vis_image_array, centroid, 1, 
+                                        color=(0., 0., 0.), thickness=1)
+
+                            # Annotate image with faded text labels:
+                            overlay = np.copy(vis_image_array)
+                            overlay = cv2.rectangle(overlay,
+                                                    (top_left[0], top_left[1] - 15),
+                                                    (top_left[0] + w, top_left[1]),
+                                                    self.text_label_colors_[template_id], -1)
+                            overlay = cv2.putText(overlay, template_id,
+                                                    (top_left[0], top_left[1] - 5),
+                                                    self.cv2_text_label_font_, 
+                                                    self.cv2_text_label_font_scale_,
+                                                    (0., 0., 0.), 1)
+                            alpha = 0.5
+                            cv2.addWeighted(overlay, alpha, vis_image_array,
+                                            1 - alpha, 0, vis_image_array)
+                        if template_id != "screen":
+                            # top_left = np.array(match) - np.array(template_positions_dict['screen'][0])
+                            # bottom_right = (top_left[0] + w, top_left[1] + h)
+                            # centroid = (int(top_left[0] + (w / 2.)), 
+                                        # int(top_left[1] + (h / 2.)))
+                            centroid_relative_2_screen = np.array(centroid) - np.array(template_positions_dict['screen'][0])
+                            template_positions_dict[template_id].append(centroid_relative_2_screen)
+                            if template_id == "yellow":
+                                print(centroid_relative_2_screen)
+                        else:
+                            template_positions_dict[template_id].append(centroid)
+
                     break
             else:
                 rospy.logwarn(f'[slider_task_solver] "{template_id}" ' + \
                                 f'could not be detected!')
 
-        if debug:
-            print(f'[DEBUG] Template positions: {template_positions_dict}')
-            print(f'[DEBUG] Detection scores: {detection_scores_dict}')
+        # if debug:
+            # print(f'[DEBUG] Template positions: {template_positions_dict}')
+            # print(f'[DEBUG] Detection scores: {detection_scores_dict}')
 
-        # Estimate distance between positions in image space:
-        estimated_pixel_distance = {'red_green': 0, 'red_yellow': 0, 'green_yellow': 0}
-        positions = {}
-        for color in ['red', 'yellow', 'green']:
-            if color not in template_positions_dict.keys():
-                rospy.logerr(f'[slider_task_solver] Could not find ' + \
-                                f'position for color {color}!')
-                positions[color] = None
-            else:
-                positions[color] = template_positions_dict[color]
-        for distance in list(estimated_pixel_distance.keys()):
-            color1, color2 = distance.split('_')
-            if positions[color1] is not None and positions[color2] is not None:
-                estimated_pixel_distance[distance] = positions[color2][0] - positions[color1][0]
-            else:
-                rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
-                                f'distance between {color1} and {color2}!')
-                errorflag = -1
-                estimated_pixel_distance[distance] = None
+        # # Estimate distance between positions in image space:
+        # estimated_pixel_distance = {'red_green': 0, 'red_yellow': 0, 'green_yellow': 0}
+        # positions = {}
+        # for color in ['red', 'yellow', 'green']:
+        #     if color not in template_positions_dict.keys():
+        #         rospy.logerr(f'[slider_task_solver] Could not find ' + \
+        #                         f'position for color {color}!')
+        #         positions[color] = None
+        #     else:
+        #         positions[color] = template_positions_dict[color]
+        # for distance in list(estimated_pixel_distance.keys()):
+        #     color1, color2 = distance.split('_')
+        #     if positions[color1] is not None and positions[color2] is not None:
+        #         estimated_pixel_distance[distance] = positions[color2][0] - positions[color1][0]
+        #     else:
+        #         rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
+        #                         f'distance between {color1} and {color2}!')
+        #         errorflag = -1
+        #         estimated_pixel_distance[distance] = None
 
 
 
-        if estimated_pixel_distance is None:
-            rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
-                            f'slider motion distance!')
+        # if estimated_pixel_distance is None:
+        #     rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
+        #                     f'slider motion distance!')
 
         if publish_visual_output:
             debug_image_msg = self.bridge.cv2_to_imgmsg(vis_image_array, 
@@ -206,4 +233,4 @@ class TriangleDetector():
             debug_image_msg.header.stamp = rospy.Time.now()
             self.slider_solver_image_publisher.publish(debug_image_msg)
 
-        return estimated_pixel_distance, errorflag
+        return template_positions_dict, errorflag
