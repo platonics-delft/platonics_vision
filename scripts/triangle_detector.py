@@ -119,10 +119,10 @@ class TriangleDetector():
                 res = cv2.matchTemplate(self.curr_image, temp_image_array, 
                                         self.template_matching_method)
                 locs = np.where(res >= self.detection_score_threshold)
+                values = res[locs]
 
-                if debug:
-                    print(f'\n[DEBUG] Checking for template: {template_id}')
-                    # print(f'[DEBUG] Current score: {max_val}')
+                sorted_locs = np.argsort(-values)
+                locs = (locs[0][sorted_locs], locs[1][sorted_locs])
 
                 if len(locs[0]) == 0:
                     if debug:
@@ -130,11 +130,10 @@ class TriangleDetector():
                                 f' score that is higher than threshold ' + \
                                 f' {self.detection_score_threshold}.')
                         print(f'[DEBUG] Trying another template source...')
+                    if template_id == "screen":
+                        errorflag = -1
+                        return template_positions_dict, errorflag
                 else:
-                    # if debug:
-                        # print(f'[DEBUG] Suitable detection found!', locs)
-                    # detection_scores_dict[template_id] = max_val
-
                     w, h = (temp_image_array.shape[1], temp_image_array.shape[0])
 
                     # Initialize list to store final matches
@@ -152,38 +151,38 @@ class TriangleDetector():
                         if not too_close:
                             final_matches.append(pt)
 
+                    if publish_visual_output:                        
+                        top_left = final_matches[0]
+                        bottom_right = (top_left[0] + w, top_left[1] + h)
+                        centroid = (int(top_left[0] + (w / 2.)), 
+                                    int(top_left[1] + (h / 2.)))
+                        # Annotate image with BB and centroid point:
+                        cv2.rectangle(vis_image_array, top_left, bottom_right,
+                                        color=self.text_label_colors_[template_id], 
+                                        thickness=2)
+                        cv2.circle(vis_image_array, centroid, 1, 
+                                    color=(0., 0., 0.), thickness=1)
+
+                        # Annotate image with faded text labels:
+                        overlay = np.copy(vis_image_array)
+                        overlay = cv2.rectangle(overlay,
+                                                (top_left[0], top_left[1] - 15),
+                                                (top_left[0] + w, top_left[1]),
+                                                self.text_label_colors_[template_id], -1)
+                        overlay = cv2.putText(overlay, template_id,
+                                                (top_left[0], top_left[1] - 5),
+                                                self.cv2_text_label_font_, 
+                                                self.cv2_text_label_font_scale_,
+                                                (0., 0., 0.), 1)
+                        alpha = 0.5
+                        cv2.addWeighted(overlay, alpha, vis_image_array,
+                                        1 - alpha, 0, vis_image_array)
                     for match in final_matches:
                         top_left = match
                         bottom_right = (top_left[0] + w, top_left[1] + h)
                         centroid = (int(top_left[0] + (w / 2.)), 
                                     int(top_left[1] + (h / 2.)))
-                        if publish_visual_output:
-                            # Annotate image with BB and centroid point:
-                            cv2.rectangle(vis_image_array, top_left, bottom_right,
-                                            color=self.text_label_colors_[template_id], 
-                                            thickness=2)
-                            cv2.circle(vis_image_array, centroid, 1, 
-                                        color=(0., 0., 0.), thickness=1)
-
-                            # Annotate image with faded text labels:
-                            overlay = np.copy(vis_image_array)
-                            overlay = cv2.rectangle(overlay,
-                                                    (top_left[0], top_left[1] - 15),
-                                                    (top_left[0] + w, top_left[1]),
-                                                    self.text_label_colors_[template_id], -1)
-                            overlay = cv2.putText(overlay, template_id,
-                                                    (top_left[0], top_left[1] - 5),
-                                                    self.cv2_text_label_font_, 
-                                                    self.cv2_text_label_font_scale_,
-                                                    (0., 0., 0.), 1)
-                            alpha = 0.5
-                            cv2.addWeighted(overlay, alpha, vis_image_array,
-                                            1 - alpha, 0, vis_image_array)
                         if template_id != "screen":
-                            # top_left = np.array(match) - np.array(template_positions_dict['screen'][0])
-                            # bottom_right = (top_left[0] + w, top_left[1] + h)
-                            # centroid = (int(top_left[0] + (w / 2.)), 
-                                        # int(top_left[1] + (h / 2.)))
                             centroid_relative_2_screen = np.array(centroid) - np.array(template_positions_dict['screen'][0])
                             template_positions_dict[template_id].append(centroid_relative_2_screen)
                             if template_id == "yellow":
@@ -192,40 +191,6 @@ class TriangleDetector():
                             template_positions_dict[template_id].append(centroid)
 
                     break
-            else:
-                rospy.logwarn(f'[slider_task_solver] "{template_id}" ' + \
-                                f'could not be detected!')
-
-        # if debug:
-            # print(f'[DEBUG] Template positions: {template_positions_dict}')
-            # print(f'[DEBUG] Detection scores: {detection_scores_dict}')
-
-        # # Estimate distance between positions in image space:
-        # estimated_pixel_distance = {'red_green': 0, 'red_yellow': 0, 'green_yellow': 0}
-        # positions = {}
-        # for color in ['red', 'yellow', 'green']:
-        #     if color not in template_positions_dict.keys():
-        #         rospy.logerr(f'[slider_task_solver] Could not find ' + \
-        #                         f'position for color {color}!')
-        #         positions[color] = None
-        #     else:
-        #         positions[color] = template_positions_dict[color]
-        # for distance in list(estimated_pixel_distance.keys()):
-        #     color1, color2 = distance.split('_')
-        #     if positions[color1] is not None and positions[color2] is not None:
-        #         estimated_pixel_distance[distance] = positions[color2][0] - positions[color1][0]
-        #     else:
-        #         rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
-        #                         f'distance between {color1} and {color2}!')
-        #         errorflag = -1
-        #         estimated_pixel_distance[distance] = None
-
-
-
-        # if estimated_pixel_distance is None:
-        #     rospy.logerr(f'[slider_task_solver] Could not estimate ' + \
-        #                     f'slider motion distance!')
-
         if publish_visual_output:
             debug_image_msg = self.bridge.cv2_to_imgmsg(vis_image_array, 
                                                     encoding="bgr8")
