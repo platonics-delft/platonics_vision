@@ -67,7 +67,7 @@ class ActiveLocalizerNode():
 
         self._panda.go_to_pose_ik(self.home_pose)
         self._panda.offset_compensator(10)
-        rospy.sleep(2.0)
+        #rospy.sleep(2.0)
 
         self._rate.sleep()
         sift_request = SiftRegistrationLocalizerRequest()
@@ -104,7 +104,7 @@ class ActiveLocalizerNode():
             self._transformed_pose = self.transform_old(box_tf, home_pose)
             self._panda.go_to_pose_ik(self._transformed_pose)
             self._panda.offset_compensator(10)
-            rospy.sleep(2.0)
+            #rospy.sleep(2.0)
             rospy.loginfo("Finished go to.")
             """
             pos_error = np.linalg.norm(xy_yaw[:2])
