@@ -25,7 +25,9 @@ class SliderSolver():
         self.safe_distance_lin=0.005
         self.safe_distance_ori=0.020
 
-        self.success_threshold = 3
+        self.success_threshold = 5
+        self.green_2_yellow_threshold = 5
+        self.maximum_distance_2_previous_yellow = 10
 
         self.acceptable_camera_delay_steps = 2
 
@@ -85,7 +87,7 @@ class SliderSolver():
                     return -1
                 for match_centroid_yellow in self.triangles_positions['yellow']:
                     distance_previous = np.linalg.norm(np.array(match_centroid_yellow) - np.array(self.previous_best_centroid_yellow))
-                    if distance_previous >= 10: 
+                    if distance_previous >= self.maximum_distance_2_previous_yellow: 
                         continue
                     else:
                         best_centroid_yellow = match_centroid_yellow
@@ -96,7 +98,7 @@ class SliderSolver():
                 
                 for match_centroid_green in self.triangles_positions['green']:
                     distance_green_yellow = np.linalg.norm(np.array(match_centroid_green) - np.array(best_centroid_yellow))
-                    if distance_green_yellow <= 5:
+                    if distance_green_yellow <= self.green_2_yellow_threshold:
                         continue
                     else:
                         best_centroid_green = match_centroid_green
