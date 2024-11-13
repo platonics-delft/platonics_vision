@@ -13,6 +13,8 @@
   <depend>panda_ros</depend>
   <buildtool_depend>catkin</buildtool_depend>
   <depend>platonics_dataset</depend>
+  <depend>realsense2_camera</depend>
+  <depend>realsense2_description</depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
